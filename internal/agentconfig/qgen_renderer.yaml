@@ -1,0 +1,17 @@
+# qgen_renderer: per-sub-agent model + prompt config (ADR-254 D2 / D12: the
+# generative scene image per chunk, ex the kennel's render_image scene path).
+#
+# AGENT-DRIVEN tiering: this YAML is the single source of truth for the image
+# model. The renderer sends primary_model as the gateway's logical_model_id with
+# response_modality=IMAGE and fallback_models as the declared fallback chain.
+# gemini-3-pro-image is the owner's choice for quality (CHO-2220, ~22s/image on
+# the shared dynamic quota); gemini-2.5-flash-image is the cheaper fallback
+# the lane ran before. prompt_version labels the renderer's envelope (the scene
+# prompt itself is composed by the kennel and carried in the payload).
+agent: qgen_renderer
+sub_agents:
+  renderer:
+    tier: image
+    primary_model: gemini-3-pro-image
+    fallback_models: [gemini-2.5-flash-image]
+    prompt_version: v1
