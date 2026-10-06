@@ -3,7 +3,7 @@ module github.com/apollo-chora/chora-qgen
 go 1.26.6
 
 require (
-	github.com/apollo-chora/chora-adk-common v0.0.0-20261006185702-ed2a5d2b83b6
+	github.com/apollo-chora/chora-adk-common v0.0.0-20261006204531-c6576ba229b3
 	github.com/apollo-chora/chora-common v0.0.0-20261005053858-010aed67a37b
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
