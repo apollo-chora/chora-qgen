@@ -1,97 +1,207 @@
 # chora-qgen
 
-The QGen ADK Go agent crew — three subscriber-only binaries that back
-chora-creation's AI-assist question authoring and the generative scene-image
-render path:
+## About
 
-| Binary | Dispatch role | Purpose |
+chora-qgen is a Go service that exposes three subscriber-only agent binaries for question generation, qualitative critique, and generative scene-image rendering. The binaries consume NATS JetStream dispatch requests, call chora-model-gateway for model inference, and use in-memory per-dispatch sessions. The renderer also writes generated images to an S3-compatible object store.
+
+The three binaries are:
+
+| Binary | Dispatch role | Function |
 |---|---|---|
-| `cmd/qgen_question` | `qgen_generate` | Single-question AI-assist generation (ADR-153): drafts or fills one MCQ/OE candidate per author request, plus the `mode=compose` testset composer. |
-| `cmd/qgen_critic` | `qgen_critique` | Qualitative critique of one candidate (or a set) for the orchestrator's quality loop — accept/reject + revision notes, never scoring. |
-| `cmd/qgen_renderer` | `qgen_render` | The generative scene image per chunk: calls the model gateway with `response_modality=IMAGE` and writes the image to the render bucket. |
+| `qgen_question` | `qgen_generate` | Generates or fills one MCQ/OE candidate. `mode=compose` also composes a test-set proposal from accepted candidates and optional source files. |
+| `qgen_critic` | `qgen_critique` | Critiques a candidate and returns an accept/reject decision, critique notes, and suggested revisions. |
+| `qgen_renderer` | `qgen_render` | Generates a scene image from a render prompt and writes it to the configured render bucket. It can also use a current image as the source for an edit. |
 
-Module path: `github.com/apollo-chora/chora-qgen`.
+## Quick start
 
-The crew is cloud-neutral: NATS JetStream for events (via
-`chora-adk-common/agentdispatch`), standard OTLP for traces (via
-`chora-adk-common/tracing`), env-backed secrets, an S3-compatible object store
-for rendered images (via `chora-common/objectstore`), and the model-gateway gRPC
-adapter for model calls (via `chora-adk-common/modelgatewayclient`). No cloud
-account or managed service is required.
+Prerequisites:
 
-## Behaviour
+- Go 1.26.6, as declared by `go.mod`.
+- A NATS JetStream server.
+- Access to chora-model-gateway with a tenant ID and GCID.
+- For `qgen_renderer`, an S3-compatible object store and a render bucket. MinIO can be used locally.
 
-- **qgen_question** serves the `qgen_generate` dispatch lane. The per-turn
-  system prompt is re-composed from session state (`intent`, `question_type`,
-  `author_*`) on every turn; the generation step branches over 4 prompt
-  templates (new_mcq / new_oe / fill_mcq / fill_oe). `mode=compose` routes to
-  the testset composer (composer LLM + deterministic finaliser); any other mode
-  is a permanent `unknown_mode` before any model call.
-- **qgen_critic** serves the `qgen_critique` lane: a tool-free single-shot agent
-  that reads the candidate JSON from session state and emits
-  `{accepted, critique_notes, suggested_revisions}` (single) or
-  `{verdicts: [...]}` with a strict candidate_id echo contract (set mode).
-- **qgen_renderer** serves the `qgen_render` lane: parses the scene prompt,
-  optionally reads the current image of an edit by `s3://` reference (refused
-  permanently unless it is inside the render bucket under the dispatch
-  tenant's own prefix), invokes the image model, writes
-  `tenants/{tenant}/jobs/{job|execution}/{uuid}.{ext}` and answers the
-  completion envelope `{image_uri, mime_type, model_id, model_version,
-  prompt_version, job_id, chunk_id, bytes, edit}`.
+Clone and build all three binaries:
 
-All three binaries take no arguments, run stateless per-dispatch sessions, and
-refuse to start unless `AGENT_DISPATCH_ENABLED=true` (the dispatch subscriber is
-their only transport).
+```bash
+git clone https://github.com/apollo-chora/chora-qgen.git
+cd chora-qgen
 
-## Layout
+go mod download
+go build ./cmd/qgen_question
+go build ./cmd/qgen_critic
+go build ./cmd/qgen_renderer
+```
 
-| Path | Purpose |
+For a local process, set the required environment and start the desired binary. All binaries are subscriber-only and require dispatch to be enabled:
+
+```bash
+export CHORA_PROJECT_ID=your-project
+export CHORA_GATEWAY_TENANT_ID=your-tenant
+export CHORA_GATEWAY_GCID=your-gcid
+export NATS_URL=nats://localhost:4222
+export AGENT_DISPATCH_ENABLED=true
+
+./qgen_question
+```
+
+Set `QGEN_RENDER_BUCKET` and the S3 variables before starting `qgen_renderer`:
+
+```bash
+export QGEN_RENDER_BUCKET=chora-qgen-renders
+export S3_ENDPOINT=http://localhost:9000
+export S3_ACCESS_KEY_ID=minioadmin
+export S3_SECRET_ACCESS_KEY=minioadmin
+export S3_REGION=us-east-1
+
+./qgen_renderer
+```
+
+## Usage
+
+The binaries do not expose a command-line interface or HTTP API for application work. They subscribe to NATS JetStream dispatch lanes:
+
+| Binary | Request subject |
 |---|---|
-| `cmd/qgen_question/` | The generator binary (no arguments). |
-| `cmd/qgen_critic/` | The critic binary (no arguments). |
-| `cmd/qgen_renderer/` | The renderer binary (no arguments). |
-| `internal/boot/` | Boot wiring: env + embedded agentconfig resolution, agent tree, plugin chain, subscriber serve, render envelope. |
-| `internal/agent/` | Pure prompt composers (question / critic / compose) and session-state readers. |
-| `internal/agentconfig/` | Embedded per-agent model + prompt YAML (single source of truth for tier + fallback chain). |
-| `internal/tools/` | The `parse_document` ADK tool (fail-loud stub until chora-doc-parser lands). |
+| `qgen_question` | `chora-qgen-question.agent-dispatch-qgen-generate-requested` |
+| `qgen_critic` | `chora-qgen-critic.agent-dispatch-qgen-critique-requested` |
+| `qgen_renderer` | `chora-qgen-renderer.agent-dispatch-qgen-render-requested` |
 
-## Transport and dependencies
+The subscription can be overridden with `AGENT_DISPATCH_SUBSCRIPTION`. The dispatch role is fixed by the binary: `qgen_generate`, `qgen_critique`, or `qgen_render`.
 
-- **Events** — NATS JetStream via `chora-common/eventbus` (inside
-  `chora-adk-common/agentdispatch`). The request subscriptions
-  (`chora-qgen-{question,critic,renderer}.agent-dispatch-qgen-{generate,critique,render}-requested`)
-  are valid NATS subjects; the canonical event envelope rides as NATS headers.
-- **Traces** — standard OTLP/gRPC via `chora-common/otel`; stdout in local dev
-  when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset.
-- **Model calls** — gRPC to `chora-model-gateway`; TLS + `CHORA_GATEWAY_TOKEN`
-  in production, plaintext when `CHORA_GATEWAY_INSECURE` is set for local dev.
-- **Object store** — S3-compatible (MinIO locally) via `chora-common/objectstore`
-  for the renderer's image bucket.
+Health checks are served on `AGENT_HEALTH_PORT`, which defaults to `8080`. The available endpoints are:
 
-Each binary listens on the health port `AGENT_HEALTH_PORT` (default `8080`,
-`/healthz` + `/readyz`) and needs NATS plus the model gateway. The renderer
-additionally needs the object store (`S3_ENDPOINT` / `S3_ACCESS_KEY_ID` /
-`S3_SECRET_ACCESS_KEY` / `S3_REGION`) and `QGEN_RENDER_BUCKET`. No database.
+- `/healthz`
+- `/readyz`
 
-## Environment variables
+### Configuration
 
-| Variable | Required | Meaning |
+Common environment variables:
+
+| Variable | Required | Default / notes |
 |---|---|---|
-| `CHORA_PROJECT_ID` | yes | Stamped on the boot log line. |
-| `CHORA_AGENT_APP_NAME` | no | ADK session AppName label. |
-| `CHORA_GATEWAY_ENDPOINT` | no | Default `gateway.chora.site:443`. |
-| `CHORA_GATEWAY_TENANT_ID` / `CHORA_GATEWAY_GCID` | yes | Gateway identity (ADR-163). |
-| `CHORA_GATEWAY_AUDIENCE` | no | Default `https://gateway.chora.site`. |
-| `CHORA_ENV` | no | `dev` \| `staging` \| `prod`. |
-| `AGENT_DISPATCH_ENABLED` | yes | Must be `true` (subscriber-only). |
-| `AGENT_DISPATCH_SUBSCRIPTION` | no | Override the derived request subscription. |
-| `NATS_URL` | yes | NATS JetStream event bus. |
-| `AGENT_HEALTH_PORT` | no | Default `8080`. |
-| `QGEN_QUESTION_GENERATION_MODEL` / `QGEN_QUESTION_COMPOSE_MODEL` / `QGEN_CRITIC_MODEL` / `QGEN_RENDERER_MODEL` | no | Primary model overrides (default: embedded agentconfig YAML). |
-| `QGEN_RENDER_BUCKET` | renderer | The render bucket. |
-| `QGEN_RENDER_TIMEOUT_SECONDS` / `QGEN_RENDER_RETRY_ATTEMPTS` / `QGEN_RENDER_RETRY_MAX_DELAY_SECONDS` | no | Image invoke timeout + retry budget. |
+| `CHORA_PROJECT_ID` | yes | Project identifier used in boot logging. |
+| `CHORA_AGENT_APP_NAME` | no | ADK session application name. |
+| `CHORA_GATEWAY_ENDPOINT` | no | `gateway.chora.site:443`. |
+| `CHORA_GATEWAY_AUDIENCE` | no | `https://gateway.chora.site`. |
+| `CHORA_GATEWAY_TENANT_ID` | yes | Gateway tenant identity. |
+| `CHORA_GATEWAY_GCID` | yes | Gateway GCID. |
+| `CHORA_ENV` | no | `dev`, `staging`, or `prod`. |
+| `AGENT_DISPATCH_ENABLED` | yes | Must be `true`. |
+| `AGENT_DISPATCH_SUBSCRIPTION` | no | Overrides the derived request subscription. |
+| `NATS_URL` | yes | NATS JetStream connection URL. |
+| `AGENT_HEALTH_PORT` | no | `8080`. |
 
-## Docker
+Model configuration is embedded in `internal/agentconfig/*.yaml` and can be overridden per primary model with these variables:
+
+| Variable | Binary / mode |
+|---|---|
+| `QGEN_QUESTION_GENERATION_MODEL` | `qgen_question` generation |
+| `QGEN_QUESTION_COMPOSE_MODEL` | `qgen_question` `mode=compose` |
+| `QGEN_CRITIC_MODEL` | `qgen_critic` |
+| `QGEN_RENDERER_MODEL` | `qgen_renderer` |
+
+The embedded fallback chains are not overridden by these environment variables.
+
+For `qgen_renderer`:
+
+| Variable | Required | Default |
+|---|---|---|
+| `QGEN_RENDER_BUCKET` | yes | none |
+| `QGEN_RENDER_TIMEOUT_SECONDS` | no | `120` |
+| `QGEN_RENDER_RETRY_ATTEMPTS` | no | `4` |
+| `QGEN_RENDER_RETRY_MAX_DELAY_SECONDS` | no | `30` |
+| `S3_ENDPOINT` | yes for the renderer's object store | configured by the environment |
+| `S3_ACCESS_KEY_ID` | yes for the renderer's object store | configured by the environment |
+| `S3_SECRET_ACCESS_KEY` | yes for the renderer's object store | configured by the environment |
+| `S3_REGION` | yes for the renderer's object store | configured by the environment |
+
+### Dispatch payloads
+
+`qgen_question` accepts the normal generation path and `mode=compose`.
+
+For generation, the per-turn instructions are selected from `intent` and `question_type`. The implemented question types are MCQ and OE, including fill flows for existing author content.
+
+For `mode=compose`, the dispatch state includes accepted candidate objects with `draft_id`, an `author_prompt`, optional `source_files`, and optional `grounding_mode`. Source files use `gs://` references, and a file with `role="rubric"` is treated as the mark scheme. The completion payload has the form:
+
+```json
+{
+  "proposed_test_set": {
+    "title": "...",
+    "description": "...",
+    "order": ["draft-id-1"],
+    "points": {
+      "draft-id-1": 10
+    }
+  }
+}
+```
+
+`qgen_critic` reads one candidate from session state and returns:
+
+```json
+{
+  "accepted": true,
+  "critique_notes": "...",
+  "suggested_revisions": ["..."]
+}
+```
+
+Set-style critique responses use a `verdicts` array.
+
+`qgen_renderer` expects a `render_prompt`. Optional fields include `source_image_uri`, `source_image_mime`, `job_id`, and `chunk_id`. Source images must be referenced with `s3://`; edit reads are restricted to the configured render bucket and the dispatch tenant's `tenants/{tenant}/` prefix.
+
+Rendered objects are written as:
+
+```
+tenants/{tenant}/jobs/{job-or-execution}/{uuid}.{ext}
+```
+
+The renderer completion payload is:
+
+```json
+{
+  "image_uri": "s3://...",
+  "mime_type": "image/png",
+  "model_id": "...",
+  "model_version": "...",
+  "prompt_version": "v1",
+  "job_id": "...",
+  "chunk_id": "...",
+  "bytes": 1234,
+  "edit": false
+}
+```
+
+All three binaries reject command-line arguments and fail to start unless `AGENT_DISPATCH_ENABLED=true`.
+
+## Development
+
+The project is a Go module:
+
+```text
+cmd/qgen_question/       qgen_question binary
+cmd/qgen_critic/         qgen_critic binary
+cmd/qgen_renderer/       qgen_renderer binary
+internal/agent/          Prompt composition and session-state handling
+internal/agentconfig/    Embedded per-agent model and prompt YAML
+internal/boot/           Configuration, agent construction, dispatch, health, and renderer wiring
+internal/tools/          ADK tools, including the parse_document tool
+.github/workflows/ci.yml CI checks
+```
+
+Run the same checks used by CI:
+
+```bash
+gofmt -l .
+go mod tidy
+go vet ./...
+go test ./...
+```
+
+CI also verifies that `go mod tidy` leaves `go.mod` and `go.sum` unchanged.
+
+Build the Docker image with the repository's Dockerfile:
 
 ```bash
 docker buildx build --platform=linux/amd64 \
@@ -101,5 +211,6 @@ docker buildx build --platform=linux/amd64 \
   -t walfa/chora-qgen:latest .
 ```
 
-One image, three binaries; the container `command` selects the member
-(default `/app/qgen_question`).
+The image contains all three binaries and uses `/app/qgen_question` as its default entrypoint. The container command can select `/app/qgen_critic` or `/app/qgen_renderer`.
+
+The `internal/tools/parse_document` ADK tool is currently a fail-loud stub. It returns `doc_parser_not_yet_wired` rather than fabricated document content.
