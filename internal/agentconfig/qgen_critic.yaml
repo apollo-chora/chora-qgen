@@ -1,15 +1,16 @@
 # qgen_critic — per-sub-agent model + prompt config.
 #
-# AGENT-DRIVEN tiering (CR qgen 2026-06-01): the critic is the CHEAP text tier
-# (a fast accept/reject + revision-notes judge over a single candidate). It
-# sends primary_model as the gateway logical_model_id + fallback_models as the
-# agent-declared fallback chain.
+# SINGLE-MODEL ROUTE (longcat migration): the critic runs the one gateway
+# logical model longcat-2.5-preview (LongCat-2.5-Preview via the
+# chora-model-gateway registry) as BOTH primary and fallback — the former
+# CHEAP text tier collapsed into it. It sends primary_model as the gateway
+# logical_model_id + fallback_models as the agent-declared fallback chain.
 #
-#   CHEAP = critic → gemini-3.5-flash → gemini-2.5-flash
+#   critic → longcat-2.5-preview → longcat-2.5-preview
 agent: qgen_critic
 sub_agents:
   critic:
     tier: cheap
-    primary_model: gemini-3.5-flash
-    fallback_models: [gemini-2.5-flash]
+    primary_model: longcat-2.5-preview
+    fallback_models: [longcat-2.5-preview]
     prompt_version: v1

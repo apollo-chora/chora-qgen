@@ -12,7 +12,7 @@ import (
 // QuestionType runtime branching that the single-Q AI-assist path needs:
 //
 //   1. content_assurance — pre-gen safety + multimodal-capable file parsing
-//      (gemini-2.5-pro, parse_document tool registered)
+//      (longcat-2.5-preview, parse_document tool registered)
 //   2. qgen_generation   — 4 prompt templates (new_mcq / new_oe / fill_mcq /
 //      fill_oe) selected via Intent + QuestionType
 //   3. qgen_evaluation   — LLM-as-judge, same 3 axes as the 6-agent crew

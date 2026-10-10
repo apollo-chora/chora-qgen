@@ -27,7 +27,7 @@ func TestParse_MissingAgentNameFailsLoud(t *testing.T) {
 	// Structurally valid YAML, but with no top-level `agent`. The agent name is
 	// what every downstream error message identifies the binary by, so an empty
 	// one is a config error rather than an anonymous agent.
-	_, err := parse([]byte("sub_agents:\n  critic:\n    tier: cheap\n    primary_model: gemini-3.5-flash\n    prompt_version: v1\n"))
+	_, err := parse([]byte("sub_agents:\n  critic:\n    tier: cheap\n    primary_model: longcat-2.5-preview\n    prompt_version: v1\n"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing top-level agent name")
 }
@@ -45,13 +45,13 @@ func TestParse_ValidDocumentRoundTrips(t *testing.T) {
 	// Positive control for the three guards above: the same parse() call on a
 	// complete document returns the config, so a failure above is the guard
 	// firing and not parse() being broken outright.
-	cfg, err := parse([]byte("agent: qgen_probe\nsub_agents:\n  critic:\n    tier: cheap\n    primary_model: gemini-3.5-flash\n    fallback_models: [gemini-2.5-flash]\n    prompt_version: v1\n"))
+	cfg, err := parse([]byte("agent: qgen_probe\nsub_agents:\n  critic:\n    tier: cheap\n    primary_model: longcat-2.5-preview\n    fallback_models: [longcat-2.5-preview]\n    prompt_version: v1\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "qgen_probe", cfg.Agent)
 	sub, err := cfg.Sub("critic")
 	require.NoError(t, err)
-	assert.Equal(t, "gemini-3.5-flash", sub.PrimaryModel)
-	assert.Equal(t, []string{"gemini-2.5-flash"}, sub.FallbackModels)
+	assert.Equal(t, "longcat-2.5-preview", sub.PrimaryModel)
+	assert.Equal(t, []string{"longcat-2.5-preview"}, sub.FallbackModels)
 }
 
 func TestSub_EmptyPrimaryModelFailsLoud(t *testing.T) {
@@ -75,7 +75,7 @@ func TestSub_EmptyPromptVersionFailsLoud(t *testing.T) {
 	cfg := AgentConfig{
 		Agent: "qgen_probe",
 		SubAgents: map[string]SubAgentConfig{
-			"generation": {Tier: "high", PrimaryModel: "gemini-3.1-pro-preview"},
+			"generation": {Tier: "high", PrimaryModel: "longcat-2.5-preview"},
 		},
 	}
 	_, err := cfg.Sub("generation")

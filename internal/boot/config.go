@@ -145,12 +145,12 @@ func SafePrefix(s string, n int) string {
 // LoadQuestionConfig resolves the qgen_question binary's boot configuration
 // from the process env plus the embedded agentconfig YAML.
 //
-// AGENT-DRIVEN tiering (CR qgen 2026-06-01): the per-sub-agent model tier +
-// fallback chain is config-declared in the YAML (single source of truth).
-// generation runs the HIGH tier (gemini-3.1-pro-preview) for question
-// quality; QGEN_QUESTION_GENERATION_MODEL remains available for ops
-// experiments but the YAML primary is the source of truth and the fallback
-// chain is never overridable by env.
+// AGENT-DRIVEN tiering (CR qgen 2026-06-01): the per-sub-agent model + fallback
+// chain is config-declared in the YAML (single source of truth). Every text
+// sub-agent runs the single gateway logical model longcat-2.5-preview (the old
+// HIGH/CHEAP model tiering collapsed into it); QGEN_QUESTION_GENERATION_MODEL
+// remains available for ops experiments but the YAML primary is the source of
+// truth and the fallback chain is never overridable by env.
 func LoadQuestionConfig() (Config, error) {
 	cfg, err := loadCommon(CrewKindQuestion)
 	if err != nil {
@@ -184,9 +184,9 @@ func LoadQuestionConfig() (Config, error) {
 
 // LoadCriticConfig resolves the qgen_critic binary's boot configuration.
 //
-// AGENT-DRIVEN tiering (CR qgen 2026-06-01): the critic is the CHEAP text
-// tier, config-declared in the embedded YAML (CHEAP = gemini-3.5-flash then
-// gemini-2.5-flash). QGEN_CRITIC_MODEL overrides the primary only.
+// AGENT-DRIVEN tiering (CR qgen 2026-06-01): the critic runs the single text
+// model, config-declared in the embedded YAML (longcat-2.5-preview as primary
+// and fallback). QGEN_CRITIC_MODEL overrides the primary only.
 func LoadCriticConfig() (Config, error) {
 	cfg, err := loadCommon(CrewKindCritic)
 	if err != nil {

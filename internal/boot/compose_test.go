@@ -197,7 +197,7 @@ func runQuestionRoot(t *testing.T, root agent.Agent, state map[string]any) (stri
 }
 
 func TestQuestionRoot_composeRunsTheComposerAndNormalises(t *testing.T) {
-	cfg := Config{Binary: CrewKindQuestion, PromptVersion: "v1", ComposeModel: "gemini-2.5-pro", ComposePromptVersion: "v1"}
+	cfg := Config{Binary: CrewKindQuestion, PromptVersion: "v1", ComposeModel: "longcat-2.5-preview", ComposePromptVersion: "v1"}
 	gen := &scriptedComposeLLM{answers: []string{"never"}}
 	comp := &scriptedComposeLLM{answers: []string{`{"title":"Fractions paper","description":"Three questions on equivalence.","order":["d-3","d-1"],"points":{"d-1":4}}`}}
 	root, err := NewQuestionRoot(cfg, gen, comp)
@@ -240,7 +240,7 @@ func TestQuestionRoot_composeRunsTheComposerAndNormalises(t *testing.T) {
 }
 
 func TestQuestionRoot_permanentFaults(t *testing.T) {
-	cfg := Config{Binary: CrewKindQuestion, PromptVersion: "v1", ComposeModel: "gemini-2.5-pro", ComposePromptVersion: "v1"}
+	cfg := Config{Binary: CrewKindQuestion, PromptVersion: "v1", ComposeModel: "longcat-2.5-preview", ComposePromptVersion: "v1"}
 	var perm *agentdispatch.PermanentError
 	// Unusable composer answer.
 	root, _ := NewQuestionRoot(cfg, &scriptedComposeLLM{}, &scriptedComposeLLM{answers: []string{"I would rather not."}})
@@ -278,16 +278,16 @@ func TestComposeConfigAndGateway(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ComposeModel != "gemini-2.5-pro" || len(cfg.ComposeFallbackModels) != 1 || cfg.ComposeFallbackModels[0] != "gemini-2.5-flash" || cfg.ComposePromptVersion != "v1" {
+	if cfg.ComposeModel != "longcat-2.5-preview" || len(cfg.ComposeFallbackModels) != 1 || cfg.ComposeFallbackModels[0] != "longcat-2.5-preview" || cfg.ComposePromptVersion != "v1" {
 		t.Fatalf("compose config = %+v", cfg)
 	}
 	gw := cfg.ComposeGatewayConfig()
-	if gw.LogicalModelID != "gemini-2.5-pro" || gw.CrewKind != "qgen_question.compose" || gw.Surface != "qgen" || gw.AgentID != "qgen_question" {
+	if gw.LogicalModelID != "longcat-2.5-preview" || gw.CrewKind != "qgen_question.compose" || gw.Surface != "qgen" || gw.AgentID != "qgen_question" {
 		t.Fatalf("compose gateway = %+v", gw)
 	}
-	t.Setenv("QGEN_QUESTION_COMPOSE_MODEL", "gemini-3.1-pro-preview")
+	t.Setenv("QGEN_QUESTION_COMPOSE_MODEL", "longcat-ops-experiment")
 	cfg, _ = LoadQuestionConfig()
-	if cfg.ComposeModel != "gemini-3.1-pro-preview" || cfg.ComposeFallbackModels[0] != "gemini-2.5-flash" {
+	if cfg.ComposeModel != "longcat-ops-experiment" || cfg.ComposeFallbackModels[0] != "longcat-2.5-preview" {
 		t.Fatalf("override replaces the primary only: %+v", cfg)
 	}
 }
