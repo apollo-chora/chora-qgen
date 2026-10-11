@@ -17,8 +17,8 @@ func TestQGenQuestion_TierLadders(t *testing.T) {
 	assurance, err := cfg.Sub("assurance")
 	require.NoError(t, err)
 	assert.Equal(t, "cheap", assurance.Tier)
-	assert.Equal(t, "gemini-3.5-flash", assurance.PrimaryModel)
-	assert.Equal(t, []string{"gemini-2.5-flash"}, assurance.FallbackModels)
+	assert.Equal(t, "longcat-2.5-preview", assurance.PrimaryModel)
+	assert.Equal(t, []string{"longcat-2.5-preview"}, assurance.FallbackModels)
 	assert.Equal(t, "v1", assurance.PromptVersion)
 
 	// HIGH tier — generation + evaluation.
@@ -26,8 +26,8 @@ func TestQGenQuestion_TierLadders(t *testing.T) {
 		sc, err := cfg.Sub(name)
 		require.NoError(t, err, name)
 		assert.Equal(t, "high", sc.Tier, name)
-		assert.Equal(t, "gemini-3.1-pro-preview", sc.PrimaryModel, name)
-		assert.Equal(t, []string{"gemini-2.5-pro"}, sc.FallbackModels, name)
+		assert.Equal(t, "longcat-2.5-preview", sc.PrimaryModel, name)
+		assert.Equal(t, []string{"longcat-2.5-preview"}, sc.FallbackModels, name)
 	}
 }
 
@@ -39,8 +39,8 @@ func TestQGenCritic_CheapTier(t *testing.T) {
 	critic, err := cfg.Sub("critic")
 	require.NoError(t, err)
 	assert.Equal(t, "cheap", critic.Tier)
-	assert.Equal(t, "gemini-3.5-flash", critic.PrimaryModel)
-	assert.Equal(t, []string{"gemini-2.5-flash"}, critic.FallbackModels)
+	assert.Equal(t, "longcat-2.5-preview", critic.PrimaryModel)
+	assert.Equal(t, []string{"longcat-2.5-preview"}, critic.FallbackModels)
 }
 
 func TestSub_MissingSubAgentFailsLoud(t *testing.T) {

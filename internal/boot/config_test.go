@@ -122,19 +122,19 @@ func TestLoadQuestionConfig_defaults(t *testing.T) {
 	assertField(t, "GatewayTenantID", cfg.GatewayTenantID, "tenant-abc")
 	assertField(t, "GatewayGCID", cfg.GatewayGCID, "0192f3a4-b5c6-7d8e-9f01-234567890abc")
 	// From the embedded agentconfig YAML: generation is the HIGH tier.
-	assertField(t, "Model", cfg.Model, "gemini-3.1-pro-preview")
+	assertField(t, "Model", cfg.Model, "longcat-2.5-preview")
 	assertField(t, "PromptVersion", cfg.PromptVersion, "v1")
 	assertField(t, "ChoraEnv", cfg.ChoraEnv, "dev")
 
-	if len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "gemini-2.5-pro" {
-		t.Errorf("FallbackModels = %v, want [gemini-2.5-pro]", cfg.FallbackModels)
+	if len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "longcat-2.5-preview" {
+		t.Errorf("FallbackModels = %v, want [longcat-2.5-preview]", cfg.FallbackModels)
 	}
 }
 
 func TestLoadQuestionConfig_everyOverrideApplied(t *testing.T) {
 	env := minimalQuestionEnv()
 	env["CHORA_AGENT_APP_NAME"] = "qgen-question-iter1"
-	env["QGEN_QUESTION_GENERATION_MODEL"] = "gemini-ops-experiment"
+	env["QGEN_QUESTION_GENERATION_MODEL"] = "longcat-ops-experiment"
 	env["CHORA_GATEWAY_ENDPOINT"] = "localhost:9090"
 	env["CHORA_ENV"] = "prod"
 	setBootEnv(t, env)
@@ -145,13 +145,13 @@ func TestLoadQuestionConfig_everyOverrideApplied(t *testing.T) {
 	}
 
 	assertField(t, "AgentAppName", cfg.AgentAppName, "qgen-question-iter1")
-	assertField(t, "Model", cfg.Model, "gemini-ops-experiment")
+	assertField(t, "Model", cfg.Model, "longcat-ops-experiment")
 	assertField(t, "GatewayEndpoint", cfg.GatewayEndpoint, "localhost:9090")
 	assertField(t, "ChoraEnv", cfg.ChoraEnv, "prod")
 
 	// The env override replaces the primary ONLY. Tier and fallback chain
 	// stay config-declared per the agentconfig YAML contract.
-	if len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "gemini-2.5-pro" {
+	if len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "longcat-2.5-preview" {
 		t.Errorf("env model override clobbered the config-declared fallback chain: %v", cfg.FallbackModels)
 	}
 }
@@ -212,27 +212,27 @@ func TestLoadCriticConfig_defaults(t *testing.T) {
 	assertField(t, "AgentAppName", cfg.AgentAppName, "")
 	assertField(t, "GatewayEndpoint", cfg.GatewayEndpoint, "gateway.chora.site:443")
 	// From the embedded agentconfig YAML: the critic is the CHEAP tier.
-	assertField(t, "Model", cfg.Model, "gemini-3.5-flash")
+	assertField(t, "Model", cfg.Model, "longcat-2.5-preview")
 	assertField(t, "PromptVersion", cfg.PromptVersion, "v1")
 	assertField(t, "ChoraEnv", cfg.ChoraEnv, "dev")
 
-	if len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "gemini-2.5-flash" {
-		t.Errorf("FallbackModels = %v, want [gemini-2.5-flash]", cfg.FallbackModels)
+	if len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "longcat-2.5-preview" {
+		t.Errorf("FallbackModels = %v, want [longcat-2.5-preview]", cfg.FallbackModels)
 	}
 }
 
 func TestLoadCriticConfig_modelOverride(t *testing.T) {
 	env := minimalQuestionEnv()
-	env["QGEN_CRITIC_MODEL"] = "gemini-critic-experiment"
+	env["QGEN_CRITIC_MODEL"] = "longcat-critic-experiment"
 	// The question binary's override key must NOT bleed into the critic.
-	env["QGEN_QUESTION_GENERATION_MODEL"] = "gemini-wrong-binary"
+	env["QGEN_QUESTION_GENERATION_MODEL"] = "longcat-wrong-binary"
 	setBootEnv(t, env)
 
 	cfg, err := LoadCriticConfig()
 	if err != nil {
 		t.Fatalf("LoadCriticConfig: %v", err)
 	}
-	assertField(t, "Model", cfg.Model, "gemini-critic-experiment")
+	assertField(t, "Model", cfg.Model, "longcat-critic-experiment")
 }
 
 func TestLoadCriticConfig_missingProjectFailsLoud(t *testing.T) {
@@ -323,7 +323,7 @@ func TestConfig_LogAttrs_questionShapeAndOrder(t *testing.T) {
 
 	got := logAttrMap(t, attrs)
 	assertField(t, "project", got["project"], "chora-489812")
-	assertField(t, "generation_model", got["generation_model"], "gemini-3.1-pro-preview")
+	assertField(t, "generation_model", got["generation_model"], "longcat-2.5-preview")
 }
 
 func TestConfig_LogAttrs_criticShapeAndOrder(t *testing.T) {
@@ -416,7 +416,7 @@ func TestConfig_GatewayConfig_question(t *testing.T) {
 
 	gw := cfg.GatewayConfig()
 	assertField(t, "Endpoint", gw.Endpoint, "gateway.chora.site:443")
-	assertField(t, "LogicalModelID", gw.LogicalModelID, "gemini-3.1-pro-preview")
+	assertField(t, "LogicalModelID", gw.LogicalModelID, "longcat-2.5-preview")
 	// AgentID is the registry name the gateway's routing policy keys on.
 	assertField(t, "AgentID", gw.AgentID, "qgen_question")
 	// CrewKind is the cost-attribution tag. The question binary tags the
@@ -424,8 +424,8 @@ func TestConfig_GatewayConfig_question(t *testing.T) {
 	assertField(t, "CrewKind", gw.CrewKind, "qgen_question.generation")
 	assertField(t, "TenantID", gw.TenantID, "tenant-abc")
 	assertField(t, "GCID", gw.GCID, "0192f3a4-b5c6-7d8e-9f01-234567890abc")
-	if len(gw.FallbackModelIDs) != 1 || gw.FallbackModelIDs[0] != "gemini-2.5-pro" {
-		t.Errorf("FallbackModelIDs = %v, want [gemini-2.5-pro]", gw.FallbackModelIDs)
+	if len(gw.FallbackModelIDs) != 1 || gw.FallbackModelIDs[0] != "longcat-2.5-preview" {
+		t.Errorf("FallbackModelIDs = %v, want [longcat-2.5-preview]", gw.FallbackModelIDs)
 	}
 }
 
@@ -437,13 +437,13 @@ func TestConfig_GatewayConfig_critic(t *testing.T) {
 	}
 
 	gw := cfg.GatewayConfig()
-	assertField(t, "LogicalModelID", gw.LogicalModelID, "gemini-3.5-flash")
+	assertField(t, "LogicalModelID", gw.LogicalModelID, "longcat-2.5-preview")
 	assertField(t, "AgentID", gw.AgentID, "qgen_critic")
 	// The critic is a single agent, so its cost tag carries no sub-agent
 	// suffix. Renaming this splits the cost dashboards.
 	assertField(t, "CrewKind", gw.CrewKind, "qgen_critic")
-	if len(gw.FallbackModelIDs) != 1 || gw.FallbackModelIDs[0] != "gemini-2.5-flash" {
-		t.Errorf("FallbackModelIDs = %v, want [gemini-2.5-flash]", gw.FallbackModelIDs)
+	if len(gw.FallbackModelIDs) != 1 || gw.FallbackModelIDs[0] != "longcat-2.5-preview" {
+		t.Errorf("FallbackModelIDs = %v, want [longcat-2.5-preview]", gw.FallbackModelIDs)
 	}
 }
 

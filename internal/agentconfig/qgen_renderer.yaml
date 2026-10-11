@@ -4,14 +4,14 @@
 # AGENT-DRIVEN tiering: this YAML is the single source of truth for the image
 # model. The renderer sends primary_model as the gateway's logical_model_id with
 # response_modality=IMAGE and fallback_models as the declared fallback chain.
-# gemini-3-pro-image is the owner's choice for quality (CHO-2220, ~22s/image on
-# the shared dynamic quota); gemini-2.5-flash-image is the cheaper fallback
-# the lane ran before. prompt_version labels the renderer's envelope (the scene
-# prompt itself is composed by the kennel and carried in the payload).
+# muse-image-1.0 is the deployment's image route (registry + the IMAGE_LLM_*
+# role env, api.meta.ai, ~22s/image); the fallback repeats it — one image
+# provider. prompt_version labels the renderer's envelope (the scene prompt
+# itself is composed by the kennel and carried in the payload).
 agent: qgen_renderer
 sub_agents:
   renderer:
     tier: image
-    primary_model: gemini-3-pro-image
-    fallback_models: [gemini-2.5-flash-image]
+    primary_model: muse-image-1.0
+    fallback_models: [muse-image-1.0]
     prompt_version: v1

@@ -147,7 +147,7 @@ func SafePrefix(s string, n int) string {
 //
 // AGENT-DRIVEN tiering (CR qgen 2026-06-01): the per-sub-agent model tier +
 // fallback chain is config-declared in the YAML (single source of truth).
-// generation runs the HIGH tier (gemini-3.1-pro-preview) for question
+// generation runs the HIGH tier (longcat-2.5-preview) for question
 // quality; QGEN_QUESTION_GENERATION_MODEL remains available for ops
 // experiments but the YAML primary is the source of truth and the fallback
 // chain is never overridable by env.
@@ -185,8 +185,8 @@ func LoadQuestionConfig() (Config, error) {
 // LoadCriticConfig resolves the qgen_critic binary's boot configuration.
 //
 // AGENT-DRIVEN tiering (CR qgen 2026-06-01): the critic is the CHEAP text
-// tier, config-declared in the embedded YAML (CHEAP = gemini-3.5-flash then
-// gemini-2.5-flash). QGEN_CRITIC_MODEL overrides the primary only.
+// tier, config-declared in the embedded YAML (CHEAP = longcat-2.5-preview then
+// longcat-2.5-preview). QGEN_CRITIC_MODEL overrides the primary only.
 func LoadCriticConfig() (Config, error) {
 	cfg, err := loadCommon(CrewKindCritic)
 	if err != nil {
@@ -222,7 +222,7 @@ const (
 )
 
 // LoadRendererConfig resolves the qgen_renderer binary's boot configuration:
-// the image model from the embedded YAML (primary gemini-3-pro-image, the
+// the image model from the embedded YAML (primary muse-image-1.0, the
 // Pro image model the owner chose for quality, CHO-2220), the render bucket
 // (required: without it there is nowhere to put the image and nothing to
 // return), the per-attempt timeout and the retry budget for a throttled model.
