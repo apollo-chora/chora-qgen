@@ -1,17 +1,14 @@
-# qgen_renderer: per-sub-agent model + prompt config (ADR-254 D2 / D12: the
+# qgen_renderer: per-sub-agent tier + prompt config (ADR-254 D2 / D12: the
 # generative scene image per chunk, ex the kennel's render_image scene path).
 #
-# AGENT-DRIVEN tiering: this YAML is the single source of truth for the image
-# model. The renderer sends primary_model as the gateway's logical_model_id with
-# response_modality=IMAGE and fallback_models as the declared fallback chain.
-# muse-image-1.0 is the deployment's image route (registry + the IMAGE_LLM_*
-# role env, api.meta.ai, ~22s/image); the fallback repeats it — one image
-# provider. prompt_version labels the renderer's envelope (the scene prompt
-# itself is composed by the kennel and carried in the payload).
+# AGENT-DRIVEN tiering: the renderer's gateway logical_model_id comes from the
+# REQUIRED QGEN_RENDERER_MODEL env var (sent with response_modality=IMAGE) and
+# its declared fallback chain from the optional QGEN_RENDERER_FALLBACK_MODELS
+# comma list; boot fails loud when the model var is unset. prompt_version labels
+# the renderer's envelope (the scene prompt itself is composed by the kennel and
+# carried in the payload).
 agent: qgen_renderer
 sub_agents:
   renderer:
     tier: image
-    primary_model: muse-image-1.0
-    fallback_models: [muse-image-1.0]
     prompt_version: v1

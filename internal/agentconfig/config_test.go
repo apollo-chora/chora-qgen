@@ -17,8 +17,6 @@ func TestQGenQuestion_TierLadders(t *testing.T) {
 	assurance, err := cfg.Sub("assurance")
 	require.NoError(t, err)
 	assert.Equal(t, "cheap", assurance.Tier)
-	assert.Equal(t, "longcat-2.5-preview", assurance.PrimaryModel)
-	assert.Equal(t, []string{"longcat-2.5-preview"}, assurance.FallbackModels)
 	assert.Equal(t, "v1", assurance.PromptVersion)
 
 	// HIGH tier — generation + evaluation.
@@ -26,9 +24,14 @@ func TestQGenQuestion_TierLadders(t *testing.T) {
 		sc, err := cfg.Sub(name)
 		require.NoError(t, err, name)
 		assert.Equal(t, "high", sc.Tier, name)
-		assert.Equal(t, "longcat-2.5-preview", sc.PrimaryModel, name)
-		assert.Equal(t, []string{"longcat-2.5-preview"}, sc.FallbackModels, name)
+		assert.Equal(t, "v1", sc.PromptVersion, name)
 	}
+
+	// The compose sub-agent (qgen_generate mode=compose) is declared too.
+	compose, err := cfg.Sub("compose")
+	require.NoError(t, err)
+	assert.Equal(t, "high", compose.Tier)
+	assert.Equal(t, "v1", compose.PromptVersion)
 }
 
 func TestQGenCritic_CheapTier(t *testing.T) {
@@ -39,8 +42,18 @@ func TestQGenCritic_CheapTier(t *testing.T) {
 	critic, err := cfg.Sub("critic")
 	require.NoError(t, err)
 	assert.Equal(t, "cheap", critic.Tier)
-	assert.Equal(t, "longcat-2.5-preview", critic.PrimaryModel)
-	assert.Equal(t, []string{"longcat-2.5-preview"}, critic.FallbackModels)
+	assert.Equal(t, "v1", critic.PromptVersion)
+}
+
+func TestQGenRenderer_ImageTier(t *testing.T) {
+	cfg, err := agentconfig.QGenRenderer()
+	require.NoError(t, err)
+	assert.Equal(t, "qgen_renderer", cfg.Agent)
+
+	renderer, err := cfg.Sub("renderer")
+	require.NoError(t, err)
+	assert.Equal(t, "image", renderer.Tier)
+	assert.Equal(t, "v1", renderer.PromptVersion)
 }
 
 func TestSub_MissingSubAgentFailsLoud(t *testing.T) {

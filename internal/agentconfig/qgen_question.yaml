@@ -1,16 +1,13 @@
-# qgen_question — per-sub-agent model + prompt config.
+# qgen_question — per-sub-agent tier + prompt config.
 #
-# AGENT-DRIVEN tiering (CR qgen 2026-06-01): this YAML is the single source of
-# truth for each sub-agent's model tier. The agent sends primary_model as the
-# gateway's logical_model_id and fallback_models as the agent-declared fallback
-# chain (InvokeRequest.fallback_logical_model_ids); the gateway HONOURS it.
-#
-# The deployment's only text route is LongCat-2.5-Preview (registry entry
-# `longcat-2.5-preview`, api.longcat.ai), so every sub-agent names it. The
-# fallback repeats the primary deliberately: there is one provider to degrade
-# to, and the gateway de-duplicates an identical (vendor, model) pair, so the
-# chain collapses to a single target. Give a sub-agent a real second model the
-# day the deployment has one.
+# AGENT-DRIVEN tiering (CR qgen 2026-06-01): this YAML declares each
+# sub-agent's TIER and its prompt template version. The model itself is
+# env-only: the boot layer reads the sub-agent's REQUIRED model env var as the
+# gateway logical_model_id (QGEN_QUESTION_GENERATION_MODEL for generation,
+# QGEN_QUESTION_COMPOSE_MODEL for the compose sub-agent) and the matching
+# optional *_FALLBACK_MODELS comma list as InvokeRequest.fallback_logical_model_ids
+# (the gateway HONOURS the declared chain). Boot fails loud when a required
+# model var is unset, so no literal model name lives here or in the code.
 #
 # prompt_version selects the composer template version (resolved against the
 # prompt registry, falling back to embedded v1).
@@ -18,25 +15,17 @@ agent: qgen_question
 sub_agents:
   assurance:
     tier: cheap
-    primary_model: longcat-2.5-preview
-    fallback_models: [longcat-2.5-preview]
     prompt_version: v1
   generation:
     tier: high
-    primary_model: longcat-2.5-preview
-    fallback_models: [longcat-2.5-preview]
     prompt_version: v1
   evaluation:
     tier: high
-    primary_model: longcat-2.5-preview
-    fallback_models: [longcat-2.5-preview]
     prompt_version: v1
   # qgen_generate mode=compose (ADR-254 D2/D6): the testset composer ported
   # from the kennel (orchestrators/testset_composer.py). It reads exam-paper
-  # PDFs/images by reference to extract marks cues, so it needs the multimodal
-  # tier — LongCat-2.5-Preview is vision-capable, so the same route serves it.
+  # PDFs/images by reference to extract marks cues, so its route must be
+  # multimodal-capable — the route is env-provided like every other sub-agent's.
   compose:
     tier: high
-    primary_model: longcat-2.5-preview
-    fallback_models: [longcat-2.5-preview]
     prompt_version: v1
