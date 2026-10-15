@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// bootEnvKeys is every environment variable the two Load*Config functions
+// bootEnvKeys is every environment variable the Load*Config functions
 // read. Tests set ALL of them explicitly (empty string when the case wants
 // them unset) so a developer machine that already exports CHORA_PROJECT_ID
 // can never leak into an assertion.
@@ -15,7 +15,11 @@ var bootEnvKeys = []string{
 	"CHORA_PROJECT_ID",
 	"CHORA_AGENT_APP_NAME",
 	"QGEN_QUESTION_GENERATION_MODEL",
+	"QGEN_QUESTION_GENERATION_FALLBACK_MODELS",
+	"QGEN_QUESTION_COMPOSE_MODEL",
+	"QGEN_QUESTION_COMPOSE_FALLBACK_MODELS",
 	"QGEN_CRITIC_MODEL",
+	"QGEN_CRITIC_FALLBACK_MODELS",
 	"CHORA_GATEWAY_ENDPOINT",
 	"CHORA_GATEWAY_TENANT_ID",
 	"CHORA_GATEWAY_GCID",
@@ -34,12 +38,16 @@ func setBootEnv(t *testing.T, overrides map[string]string) {
 }
 
 // minimalQuestionEnv is the smallest env that loads without error: project
-// plus the two ADR-163 gateway identity vars.
+// plus the two ADR-163 gateway identity vars plus every REQUIRED model var.
+// The model ids are env-only, so a load without them fails loud by design.
 func minimalQuestionEnv() map[string]string {
 	return map[string]string{
-		"CHORA_PROJECT_ID":        "chora-489812",
-		"CHORA_GATEWAY_TENANT_ID": "tenant-abc",
-		"CHORA_GATEWAY_GCID":      "0192f3a4-b5c6-7d8e-9f01-234567890abc",
+		"CHORA_PROJECT_ID":               "chora-489812",
+		"CHORA_GATEWAY_TENANT_ID":        "tenant-abc",
+		"CHORA_GATEWAY_GCID":             "0192f3a4-b5c6-7d8e-9f01-234567890abc",
+		"QGEN_QUESTION_GENERATION_MODEL": "env-generation-model",
+		"QGEN_QUESTION_COMPOSE_MODEL":    "env-compose-model",
+		"QGEN_CRITIC_MODEL":              "env-critic-model",
 	}
 }
 
@@ -121,20 +129,22 @@ func TestLoadQuestionConfig_defaults(t *testing.T) {
 	assertField(t, "GatewayEndpoint", cfg.GatewayEndpoint, "gateway.chora.site:443")
 	assertField(t, "GatewayTenantID", cfg.GatewayTenantID, "tenant-abc")
 	assertField(t, "GatewayGCID", cfg.GatewayGCID, "0192f3a4-b5c6-7d8e-9f01-234567890abc")
-	// From the embedded agentconfig YAML: generation is the HIGH tier.
-	assertField(t, "Model", cfg.Model, "gemini-3.1-pro-preview")
+	// The model id is env-only — nothing in the YAML or the code names one.
+	assertField(t, "Model", cfg.Model, "env-generation-model")
 	assertField(t, "PromptVersion", cfg.PromptVersion, "v1")
 	assertField(t, "ChoraEnv", cfg.ChoraEnv, "dev")
 
-	if len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "gemini-2.5-pro" {
-		t.Errorf("FallbackModels = %v, want [gemini-2.5-pro]", cfg.FallbackModels)
+	// No fallback chain unless QGEN_QUESTION_GENERATION_FALLBACK_MODELS is set.
+	if len(cfg.FallbackModels) != 0 {
+		t.Errorf("FallbackModels = %v, want none (the empty default)", cfg.FallbackModels)
 	}
 }
 
 func TestLoadQuestionConfig_everyOverrideApplied(t *testing.T) {
 	env := minimalQuestionEnv()
 	env["CHORA_AGENT_APP_NAME"] = "qgen-question-iter1"
-	env["QGEN_QUESTION_GENERATION_MODEL"] = "gemini-ops-experiment"
+	env["QGEN_QUESTION_GENERATION_MODEL"] = "env-generation-override"
+	env["QGEN_QUESTION_GENERATION_FALLBACK_MODELS"] = "env-fallback-a, env-fallback-b"
 	env["CHORA_GATEWAY_ENDPOINT"] = "localhost:9090"
 	env["CHORA_ENV"] = "prod"
 	setBootEnv(t, env)
@@ -145,14 +155,41 @@ func TestLoadQuestionConfig_everyOverrideApplied(t *testing.T) {
 	}
 
 	assertField(t, "AgentAppName", cfg.AgentAppName, "qgen-question-iter1")
-	assertField(t, "Model", cfg.Model, "gemini-ops-experiment")
+	assertField(t, "Model", cfg.Model, "env-generation-override")
 	assertField(t, "GatewayEndpoint", cfg.GatewayEndpoint, "localhost:9090")
 	assertField(t, "ChoraEnv", cfg.ChoraEnv, "prod")
 
-	// The env override replaces the primary ONLY. Tier and fallback chain
-	// stay config-declared per the agentconfig YAML contract.
-	if len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "gemini-2.5-pro" {
-		t.Errorf("env model override clobbered the config-declared fallback chain: %v", cfg.FallbackModels)
+	// The declared chain is the env's, comma-split and trimmed.
+	if len(cfg.FallbackModels) != 2 || cfg.FallbackModels[0] != "env-fallback-a" || cfg.FallbackModels[1] != "env-fallback-b" {
+		t.Errorf("FallbackModels = %v, want [env-fallback-a env-fallback-b]", cfg.FallbackModels)
+	}
+}
+
+func TestLoadQuestionConfig_missingGenerationModelFailsLoud(t *testing.T) {
+	env := minimalQuestionEnv()
+	env["QGEN_QUESTION_GENERATION_MODEL"] = ""
+	setBootEnv(t, env)
+
+	_, err := LoadQuestionConfig()
+	if err == nil {
+		t.Fatal("LoadQuestionConfig accepted an empty QGEN_QUESTION_GENERATION_MODEL")
+	}
+	if !strings.Contains(err.Error(), "QGEN_QUESTION_GENERATION_MODEL") {
+		t.Errorf("error does not name the missing var: %v", err)
+	}
+}
+
+func TestLoadQuestionConfig_missingComposeModelFailsLoud(t *testing.T) {
+	env := minimalQuestionEnv()
+	env["QGEN_QUESTION_COMPOSE_MODEL"] = ""
+	setBootEnv(t, env)
+
+	_, err := LoadQuestionConfig()
+	if err == nil {
+		t.Fatal("LoadQuestionConfig accepted an empty QGEN_QUESTION_COMPOSE_MODEL")
+	}
+	if !strings.Contains(err.Error(), "QGEN_QUESTION_COMPOSE_MODEL") {
+		t.Errorf("error does not name the missing var: %v", err)
 	}
 }
 
@@ -211,28 +248,42 @@ func TestLoadCriticConfig_defaults(t *testing.T) {
 	assertField(t, "ProjectID", cfg.ProjectID, "chora-489812")
 	assertField(t, "AgentAppName", cfg.AgentAppName, "")
 	assertField(t, "GatewayEndpoint", cfg.GatewayEndpoint, "gateway.chora.site:443")
-	// From the embedded agentconfig YAML: the critic is the CHEAP tier.
-	assertField(t, "Model", cfg.Model, "gemini-3.5-flash")
+	// The model id is env-only; the critic's own var supplies it.
+	assertField(t, "Model", cfg.Model, "env-critic-model")
 	assertField(t, "PromptVersion", cfg.PromptVersion, "v1")
 	assertField(t, "ChoraEnv", cfg.ChoraEnv, "dev")
 
-	if len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "gemini-2.5-flash" {
-		t.Errorf("FallbackModels = %v, want [gemini-2.5-flash]", cfg.FallbackModels)
+	if len(cfg.FallbackModels) != 0 {
+		t.Errorf("FallbackModels = %v, want none (the empty default)", cfg.FallbackModels)
 	}
 }
 
 func TestLoadCriticConfig_modelOverride(t *testing.T) {
 	env := minimalQuestionEnv()
-	env["QGEN_CRITIC_MODEL"] = "gemini-critic-experiment"
-	// The question binary's override key must NOT bleed into the critic.
-	env["QGEN_QUESTION_GENERATION_MODEL"] = "gemini-wrong-binary"
+	env["QGEN_CRITIC_MODEL"] = "env-critic-override"
+	// The question binary's model var must NOT bleed into the critic.
+	env["QGEN_QUESTION_GENERATION_MODEL"] = "env-wrong-binary"
 	setBootEnv(t, env)
 
 	cfg, err := LoadCriticConfig()
 	if err != nil {
 		t.Fatalf("LoadCriticConfig: %v", err)
 	}
-	assertField(t, "Model", cfg.Model, "gemini-critic-experiment")
+	assertField(t, "Model", cfg.Model, "env-critic-override")
+}
+
+func TestLoadCriticConfig_missingModelFailsLoud(t *testing.T) {
+	env := minimalQuestionEnv()
+	env["QGEN_CRITIC_MODEL"] = ""
+	setBootEnv(t, env)
+
+	_, err := LoadCriticConfig()
+	if err == nil {
+		t.Fatal("LoadCriticConfig accepted an empty QGEN_CRITIC_MODEL")
+	}
+	if !strings.Contains(err.Error(), "QGEN_CRITIC_MODEL") {
+		t.Errorf("error does not name the missing var: %v", err)
+	}
 }
 
 func TestLoadCriticConfig_missingProjectFailsLoud(t *testing.T) {
@@ -323,7 +374,7 @@ func TestConfig_LogAttrs_questionShapeAndOrder(t *testing.T) {
 
 	got := logAttrMap(t, attrs)
 	assertField(t, "project", got["project"], "chora-489812")
-	assertField(t, "generation_model", got["generation_model"], "gemini-3.1-pro-preview")
+	assertField(t, "generation_model", got["generation_model"], "env-generation-model")
 }
 
 func TestConfig_LogAttrs_criticShapeAndOrder(t *testing.T) {
@@ -416,7 +467,7 @@ func TestConfig_GatewayConfig_question(t *testing.T) {
 
 	gw := cfg.GatewayConfig()
 	assertField(t, "Endpoint", gw.Endpoint, "gateway.chora.site:443")
-	assertField(t, "LogicalModelID", gw.LogicalModelID, "gemini-3.1-pro-preview")
+	assertField(t, "LogicalModelID", gw.LogicalModelID, "env-generation-model")
 	// AgentID is the registry name the gateway's routing policy keys on.
 	assertField(t, "AgentID", gw.AgentID, "qgen_question")
 	// CrewKind is the cost-attribution tag. The question binary tags the
@@ -424,8 +475,8 @@ func TestConfig_GatewayConfig_question(t *testing.T) {
 	assertField(t, "CrewKind", gw.CrewKind, "qgen_question.generation")
 	assertField(t, "TenantID", gw.TenantID, "tenant-abc")
 	assertField(t, "GCID", gw.GCID, "0192f3a4-b5c6-7d8e-9f01-234567890abc")
-	if len(gw.FallbackModelIDs) != 1 || gw.FallbackModelIDs[0] != "gemini-2.5-pro" {
-		t.Errorf("FallbackModelIDs = %v, want [gemini-2.5-pro]", gw.FallbackModelIDs)
+	if len(gw.FallbackModelIDs) != 0 {
+		t.Errorf("FallbackModelIDs = %v, want none (no chain configured)", gw.FallbackModelIDs)
 	}
 }
 
@@ -437,13 +488,13 @@ func TestConfig_GatewayConfig_critic(t *testing.T) {
 	}
 
 	gw := cfg.GatewayConfig()
-	assertField(t, "LogicalModelID", gw.LogicalModelID, "gemini-3.5-flash")
+	assertField(t, "LogicalModelID", gw.LogicalModelID, "env-critic-model")
 	assertField(t, "AgentID", gw.AgentID, "qgen_critic")
 	// The critic is a single agent, so its cost tag carries no sub-agent
 	// suffix. Renaming this splits the cost dashboards.
 	assertField(t, "CrewKind", gw.CrewKind, "qgen_critic")
-	if len(gw.FallbackModelIDs) != 1 || gw.FallbackModelIDs[0] != "gemini-2.5-flash" {
-		t.Errorf("FallbackModelIDs = %v, want [gemini-2.5-flash]", gw.FallbackModelIDs)
+	if len(gw.FallbackModelIDs) != 0 {
+		t.Errorf("FallbackModelIDs = %v, want none (no chain configured)", gw.FallbackModelIDs)
 	}
 }
 

@@ -40,8 +40,10 @@
 //
 //	CHORA_PROJECT_ID                       — required; stamped on the boot log line
 //	CHORA_AGENT_APP_NAME                   — ADK session AppName label (optional)
-//	QGEN_QUESTION_GENERATION_MODEL         — primary model override (default: embedded agentconfig YAML)
-//	QGEN_QUESTION_COMPOSE_MODEL            — compose model override (default: embedded agentconfig YAML)
+//	QGEN_QUESTION_GENERATION_MODEL         — required: the gateway logical_model_id (no default)
+//	QGEN_QUESTION_COMPOSE_MODEL            — required: the compose sub-agent's logical_model_id
+//	QGEN_QUESTION_GENERATION_FALLBACK_MODELS / QGEN_QUESTION_COMPOSE_FALLBACK_MODELS
+//	                                       — optional comma-separated fallback chains (empty = none)
 //	CHORA_GATEWAY_ENDPOINT                 — default gateway.chora.site:443
 //	CHORA_GATEWAY_TENANT_ID / _GCID        — required (ADR-163; per-request values from the dispatch win)
 //	CHORA_ENV                              — dev | staging | prod

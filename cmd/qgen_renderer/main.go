@@ -16,7 +16,8 @@
 //	CHORA_GATEWAY_ENDPOINT                 — default gateway.chora.site:443
 //	CHORA_GATEWAY_TENANT_ID / _GCID        — required (ADR-163; per-request values from the dispatch win)
 //	QGEN_RENDER_BUCKET                     — required: the render bucket (the kennel signs reads from it)
-//	QGEN_RENDERER_MODEL                    — image model override (default: embedded agentconfig YAML)
+//	QGEN_RENDERER_MODEL                    — required: the image gateway logical_model_id (no default)
+//	QGEN_RENDERER_FALLBACK_MODELS          — optional comma-separated fallback chain (empty = none)
 //	QGEN_RENDER_TIMEOUT_SECONDS            — per-attempt Invoke ceiling (default 120)
 //	QGEN_RENDER_RETRY_ATTEMPTS             — retry budget on a throttled model (default 4)
 //	QGEN_RENDER_RETRY_MAX_DELAY_SECONDS    — backoff cap (default 30)

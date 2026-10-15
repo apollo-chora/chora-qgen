@@ -128,8 +128,9 @@ func withTracing(ctx context.Context, cfg Config, body func(context.Context) err
 
 // serveLLM is the shared boot of the two LLM binaries: the gateway-fronted
 // LLM (ADR-163), the root agent, the plugin chain, the subscriber. Model
-// selection is AGENT-DRIVEN (the YAML primary + declared fallback chain); no
-// agent-side mana gate, the gateway meters (ADR-177 / ADR-254 A3).
+// selection is AGENT-DRIVEN (the env-provided model + the optional
+// env-declared fallback chain); no agent-side mana gate, the gateway meters
+// (ADR-177 / ADR-254 A3).
 func serveLLM(
 	ctx context.Context, cfg Config,
 	newRoot func(Config, adkmodel.LLM, adkmodel.LLM) (agent.Agent, error),
@@ -141,8 +142,8 @@ func serveLLM(
 			return fmt.Errorf("modelgatewayclient.New(%s, %s @ %s): %w", cfg.ModelLabel, cfg.Model, cfg.GatewayEndpoint, err)
 		}
 		// The composer's own gateway client (qgen_question only): built when
-		// the YAML declares a compose model, so mode=compose is served by a
-		// real client or refused by name, never faked.
+		// a compose model is configured, so mode=compose is served by a real
+		// client or refused by name, never faked.
 		var composeLLM adkmodel.LLM
 		if cfg.ComposeModel != "" {
 			composeLLM, err = newComposeLLM(ctx, cfg)
