@@ -67,6 +67,7 @@ func TestGatewayAudience_defaultsExplicitly_LoadRendererConfig(t *testing.T) {
 	// ⚠ set directly: QGEN_RENDER_BUCKET is not in bootEnvKeys, so passing
 	// it through setBootEnv's override map is silently ignored.
 	t.Setenv("QGEN_RENDER_BUCKET", "render-bucket")
+	t.Setenv("QGEN_RENDERER_MODEL", "env-renderer-model")
 	cfg, err := LoadRendererConfig()
 	if err != nil {
 		t.Fatalf("LoadRendererConfig: %v", err)
@@ -80,6 +81,7 @@ func TestGatewayAudience_defaultsExplicitly_LoadRendererConfig(t *testing.T) {
 func TestGatewayAudience_honoursEnv_LoadRendererConfig(t *testing.T) {
 	setBootEnv(t, minimalQuestionEnv())
 	t.Setenv("QGEN_RENDER_BUCKET", "render-bucket")
+	t.Setenv("QGEN_RENDERER_MODEL", "env-renderer-model")
 	t.Setenv("CHORA_GATEWAY_AUDIENCE", "https://gateway.example.invalid")
 	cfg, err := LoadRendererConfig()
 	if err != nil {

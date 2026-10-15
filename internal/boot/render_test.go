@@ -58,7 +58,7 @@ func (f *fakeStore) Read(_ context.Context, uri string) ([]byte, string, error) 
 }
 
 func rendererCfg() Config {
-	return Config{Binary: CrewKindRenderer, ModelLabel: "renderer", Model: "muse-image-1.0", PromptVersion: "v1", RenderBucket: "render-bucket", AgentAppName: "app"}
+	return Config{Binary: CrewKindRenderer, ModelLabel: "renderer", Model: "env-renderer-model", PromptVersion: "v1", RenderBucket: "render-bucket", AgentAppName: "app"}
 }
 
 func runRenderer(t *testing.T, root agent.Agent, state map[string]any, plugins []*plugin.Plugin) (string, error) {
@@ -93,7 +93,7 @@ func renderState(extra map[string]any) map[string]any {
 }
 
 func TestRenderer_happyPathWritesTheImageAndAnswersTheEnvelope(t *testing.T) {
-	inv := &fakeInvoker{result: modelgatewayclient.ImageResult{Bytes: []byte("PNGBYTES"), MimeType: "image/png", ModelVersion: "muse-image-1.0-001", Attempts: 1}}
+	inv := &fakeInvoker{result: modelgatewayclient.ImageResult{Bytes: []byte("PNGBYTES"), MimeType: "image/png", ModelVersion: "env-renderer-model-001", Attempts: 1}}
 	store := &fakeStore{}
 	root, err := NewRendererAgent(rendererCfg(), inv, store)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestRenderer_happyPathWritesTheImageAndAnswersTheEnvelope(t *testing.T) {
 	if !strings.HasPrefix(env.ImageURI, "s3://render-bucket/tenants/11111111-1111-7111-8111-111111111111/jobs/job-7/") || !strings.HasSuffix(env.ImageURI, ".png") {
 		t.Fatalf("image_uri = %q", env.ImageURI)
 	}
-	if env.MimeType != "image/png" || env.ModelID != "muse-image-1.0" || env.ModelVersion != "muse-image-1.0-001" || env.PromptVersion != "v1" || env.JobID != "job-7" || env.ChunkID != "chunk-2" || env.Bytes != 8 || env.Edit {
+	if env.MimeType != "image/png" || env.ModelID != "env-renderer-model" || env.ModelVersion != "env-renderer-model-001" || env.PromptVersion != "v1" || env.JobID != "job-7" || env.ChunkID != "chunk-2" || env.Bytes != 8 || env.Edit {
 		t.Fatalf("envelope = %+v", env)
 	}
 	if len(inv.reqs) != 1 || inv.reqs[0].TenantID != "11111111-1111-7111-8111-111111111111" || inv.reqs[0].GCID != "g1" || inv.reqs[0].Prompt != "A fox explaining fractions with a pizza" || inv.reqs[0].DispatchIdempotencyKey != "agent_dispatch.qgen_render.e-1" || inv.reqs[0].ActionCode != "" || len(inv.reqs[0].SourceImage) != 0 {
@@ -223,6 +223,7 @@ func TestLoadRendererConfig_guardsAndDefaults(t *testing.T) {
 	t.Setenv("CHORA_GATEWAY_GCID", "g1")
 	t.Setenv("QGEN_RENDER_BUCKET", "")
 	t.Setenv("QGEN_RENDERER_MODEL", "")
+	t.Setenv("QGEN_RENDERER_FALLBACK_MODELS", "")
 	t.Setenv("QGEN_RENDER_TIMEOUT_SECONDS", "")
 	t.Setenv("QGEN_RENDER_RETRY_ATTEMPTS", "")
 	t.Setenv("QGEN_RENDER_RETRY_MAX_DELAY_SECONDS", "")
@@ -230,15 +231,20 @@ func TestLoadRendererConfig_guardsAndDefaults(t *testing.T) {
 		t.Fatalf("bucket guard: %v", err)
 	}
 	t.Setenv("QGEN_RENDER_BUCKET", "chora-ai-assist-images-dev")
+	// The image model is env-only: an unset QGEN_RENDERER_MODEL is a boot error.
+	if _, err := LoadRendererConfig(); err == nil || !strings.Contains(err.Error(), "QGEN_RENDERER_MODEL") {
+		t.Fatalf("model guard: %v", err)
+	}
+	t.Setenv("QGEN_RENDERER_MODEL", "env-renderer-model")
 	cfg, err := LoadRendererConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Binary != CrewKindRenderer || cfg.Model != "muse-image-1.0" || len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "muse-image-1.0" || cfg.PromptVersion != "v1" || cfg.RenderBucket != "chora-ai-assist-images-dev" || cfg.ImageTimeout != 120*time.Second || cfg.ImageRetry.Attempts != 4 || cfg.ImageRetry.MaxDelay != 30*time.Second || cfg.GatewayCrewKind != CrewSurface {
+	if cfg.Binary != CrewKindRenderer || cfg.Model != "env-renderer-model" || len(cfg.FallbackModels) != 0 || cfg.PromptVersion != "v1" || cfg.RenderBucket != "chora-ai-assist-images-dev" || cfg.ImageTimeout != 120*time.Second || cfg.ImageRetry.Attempts != 4 || cfg.ImageRetry.MaxDelay != 30*time.Second || cfg.GatewayCrewKind != CrewSurface {
 		t.Fatalf("config = %+v", cfg)
 	}
 	gw := cfg.GatewayConfig()
-	if gw.Surface != "qgen" || gw.AgentID != "qgen_renderer" || gw.LogicalModelID != "muse-image-1.0" {
+	if gw.Surface != "qgen" || gw.AgentID != "qgen_renderer" || gw.LogicalModelID != "env-renderer-model" {
 		t.Fatalf("gateway config = %+v", gw)
 	}
 	attrs := cfg.LogAttrs()
@@ -255,9 +261,10 @@ func TestLoadRendererConfig_guardsAndDefaults(t *testing.T) {
 	}
 	t.Setenv("QGEN_RENDER_TIMEOUT_SECONDS", "45")
 	t.Setenv("QGEN_RENDER_RETRY_ATTEMPTS", "2")
-	t.Setenv("QGEN_RENDERER_MODEL", "muse-image-1.0")
+	t.Setenv("QGEN_RENDERER_MODEL", "env-renderer-override")
+	t.Setenv("QGEN_RENDERER_FALLBACK_MODELS", "env-renderer-fallback")
 	cfg, _ = LoadRendererConfig()
-	if cfg.ImageTimeout != 45*time.Second || cfg.ImageRetry.Attempts != 2 || cfg.Model != "muse-image-1.0" || cfg.FallbackModels[0] != "muse-image-1.0" {
+	if cfg.ImageTimeout != 45*time.Second || cfg.ImageRetry.Attempts != 2 || cfg.Model != "env-renderer-override" || len(cfg.FallbackModels) != 1 || cfg.FallbackModels[0] != "env-renderer-fallback" {
 		t.Fatalf("overrides: %+v", cfg)
 	}
 }
@@ -305,6 +312,7 @@ func TestRunRenderer_composesTheLaneAndSurfacesTheSubscriberError(t *testing.T) 
 	t.Setenv("CHORA_GATEWAY_TENANT_ID", "t1")
 	t.Setenv("CHORA_GATEWAY_GCID", "g1")
 	t.Setenv("QGEN_RENDER_BUCKET", "render-bucket")
+	t.Setenv("QGEN_RENDERER_MODEL", "env-renderer-model")
 	oldT, oldI, oldS, oldServe := initTracing, newImageInvoker, newObjectStore, serveSubscriber
 	t.Cleanup(func() { initTracing, newImageInvoker, newObjectStore, serveSubscriber = oldT, oldI, oldS, oldServe })
 	initTracing = func(context.Context, string) (func(context.Context) error, error) {

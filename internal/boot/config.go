@@ -5,7 +5,7 @@
 //
 // Split of responsibility:
 //
-//	config.go  = env plus agentconfig YAML resolution into a Config.
+//	config.go  = env plus the agentconfig tier/prompt YAML into a Config.
 //	             Returns errors, never exits the process.
 //	agents.go  = per-turn instruction providers, llmagent + pipeline
 //	             construction. The LLM is INJECTED as adkmodel.LLM so a
@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/apollo-chora/chora-adk-common/modelgatewayclient"
@@ -54,11 +55,26 @@ const (
 	CrewSurface = "qgen"
 )
 
+// Model env names (names only; values come from the container env per
+// feedback_no_inline_config). Every *_MODEL var is REQUIRED — boot fails loud
+// when one is unset rather than falling back to a literal model name. The
+// *_FALLBACK_MODELS vars are optional comma-separated chains: unset (the
+// default) declares no fallback.
+const (
+	envQuestionGenerationModel    = "QGEN_QUESTION_GENERATION_MODEL"
+	envQuestionGenerationFallback = "QGEN_QUESTION_GENERATION_FALLBACK_MODELS"
+	envQuestionComposeModel       = "QGEN_QUESTION_COMPOSE_MODEL"
+	envQuestionComposeFallback    = "QGEN_QUESTION_COMPOSE_FALLBACK_MODELS"
+	envCriticModel                = "QGEN_CRITIC_MODEL"
+	envCriticFallback             = "QGEN_CRITIC_FALLBACK_MODELS"
+)
+
 // Config is one binary's fully resolved boot configuration: the env vars it
 // read plus the sub-agent slice of its embedded agentconfig YAML.
 //
 // Nothing here is a default invented at the call site. Every value comes
-// from an env var or from the YAML per feedback_no_inline_config.
+// from an env var or from the YAML per feedback_no_inline_config. The model
+// ids are env-only: there is no literal fallback.
 type Config struct {
 	// Binary is the crew identity of the binary this Config belongs to,
 	// CrewKindQuestion or CrewKindCritic. It is also the tracing service
@@ -84,12 +100,15 @@ type Config struct {
 	GatewayTenantID string
 	GatewayGCID     string
 
-	// Model is the gateway logical_model_id: the YAML-declared primary,
-	// overridable per binary by env for quick ops experiments.
+	// Model is the gateway logical_model_id, read from this binary's
+	// REQUIRED *_MODEL env var. An unset var is a boot error: there is no
+	// literal model name to fall back to.
 	Model string
 
-	// FallbackModels is the agent-declared fallback chain. It stays
-	// config-declared: the env override above replaces the primary only.
+	// FallbackModels is the agent-declared fallback chain, read from this
+	// binary's *_FALLBACK_MODELS env var as a comma-separated list. Empty
+	// (the default) declares no chain; whatever is declared is forwarded to
+	// the gateway, which honours it.
 	FallbackModels []string
 
 	// PromptVersion is the composer template version stamped onto the
@@ -104,9 +123,9 @@ type Config struct {
 	GatewayCrewKind string
 
 	// ComposeModel / ComposeFallbackModels / ComposePromptVersion are the
-	// qgen_generate mode=compose composer's model (qgen_question only; the
-	// YAML "compose" sub-agent, QGEN_QUESTION_COMPOSE_MODEL overrides the
-	// primary).
+	// qgen_generate mode=compose composer's model (qgen_question only;
+	// QGEN_QUESTION_COMPOSE_MODEL is required and the optional
+	// QGEN_QUESTION_COMPOSE_FALLBACK_MODELS supplies its chain).
 	ComposeModel          string
 	ComposeFallbackModels []string
 	ComposePromptVersion  string
@@ -132,6 +151,34 @@ func EnvOr(name, fallback string) string {
 	return fallback
 }
 
+// requiredModel returns the env-provided gateway logical_model_id, failing
+// loud when the var is unset. Model ids are env-only: there is no literal
+// default to fall back to (feedback_no_inline_config).
+func requiredModel(binary, name string) (string, error) {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return "", fmt.Errorf("%s: %s required (the gateway logical_model_id; env-only, no default)", binary, name)
+	}
+	return v, nil
+}
+
+// fallbackModels parses a comma-separated env list into the declared fallback
+// chain. Unset / blank (the default) declares no chain, so the gateway is
+// asked for the primary target only.
+func fallbackModels(name string) []string {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // SafePrefix returns the first n characters of s, padded with "…" if
 // truncated. Used to log identifiers (GCID, etc.) without printing them
 // in full.
@@ -145,12 +192,11 @@ func SafePrefix(s string, n int) string {
 // LoadQuestionConfig resolves the qgen_question binary's boot configuration
 // from the process env plus the embedded agentconfig YAML.
 //
-// AGENT-DRIVEN tiering (CR qgen 2026-06-01): the per-sub-agent model tier +
-// fallback chain is config-declared in the YAML (single source of truth).
-// generation runs the HIGH tier (longcat-2.5-preview) for question
-// quality; QGEN_QUESTION_GENERATION_MODEL remains available for ops
-// experiments but the YAML primary is the source of truth and the fallback
-// chain is never overridable by env.
+// AGENT-DRIVEN tiering (CR qgen 2026-06-01): the per-sub-agent tier + prompt
+// version is config-declared in the YAML (single source of truth) while the
+// model id is env-only. QGEN_QUESTION_GENERATION_MODEL supplies the generation
+// model and QGEN_QUESTION_COMPOSE_MODEL the composer's; both are REQUIRED, so
+// a deploy that forgets one dies at boot rather than routing to a literal.
 func LoadQuestionConfig() (Config, error) {
 	cfg, err := loadCommon(CrewKindQuestion)
 	if err != nil {
@@ -165,18 +211,26 @@ func LoadQuestionConfig() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("qgen_question: %w", err)
 	}
-
-	cfg.ModelLabel = "generation"
-	cfg.GatewayCrewKind = CrewKindQuestion + ".generation"
-	cfg.Model = EnvOr("QGEN_QUESTION_GENERATION_MODEL", generationCfg.PrimaryModel)
-	cfg.FallbackModels = generationCfg.FallbackModels
-	cfg.PromptVersion = generationCfg.PromptVersion
 	composeCfg, err := qcfg.Sub("compose")
 	if err != nil {
 		return Config{}, fmt.Errorf("qgen_question: %w", err)
 	}
-	cfg.ComposeModel = EnvOr("QGEN_QUESTION_COMPOSE_MODEL", composeCfg.PrimaryModel)
-	cfg.ComposeFallbackModels = composeCfg.FallbackModels
+	model, err := requiredModel(CrewKindQuestion, envQuestionGenerationModel)
+	if err != nil {
+		return Config{}, err
+	}
+	composeModel, err := requiredModel(CrewKindQuestion, envQuestionComposeModel)
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.ModelLabel = "generation"
+	cfg.GatewayCrewKind = CrewKindQuestion + ".generation"
+	cfg.Model = model
+	cfg.FallbackModels = fallbackModels(envQuestionGenerationFallback)
+	cfg.PromptVersion = generationCfg.PromptVersion
+	cfg.ComposeModel = composeModel
+	cfg.ComposeFallbackModels = fallbackModels(envQuestionComposeFallback)
 	cfg.ComposePromptVersion = composeCfg.PromptVersion
 
 	return cfg, nil
@@ -184,9 +238,10 @@ func LoadQuestionConfig() (Config, error) {
 
 // LoadCriticConfig resolves the qgen_critic binary's boot configuration.
 //
-// AGENT-DRIVEN tiering (CR qgen 2026-06-01): the critic is the CHEAP text
-// tier, config-declared in the embedded YAML (CHEAP = longcat-2.5-preview then
-// longcat-2.5-preview). QGEN_CRITIC_MODEL overrides the primary only.
+// AGENT-DRIVEN tiering (CR qgen 2026-06-01): the critic is the cheap text
+// tier, config-declared in the embedded YAML. QGEN_CRITIC_MODEL supplies the
+// gateway logical_model_id and is REQUIRED; QGEN_CRITIC_FALLBACK_MODELS
+// optionally declares its chain.
 func LoadCriticConfig() (Config, error) {
 	cfg, err := loadCommon(CrewKindCritic)
 	if err != nil {
@@ -201,11 +256,15 @@ func LoadCriticConfig() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("qgen_critic: %w", err)
 	}
+	model, err := requiredModel(CrewKindCritic, envCriticModel)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg.ModelLabel = "critic"
 	cfg.GatewayCrewKind = CrewKindCritic
-	cfg.Model = EnvOr("QGEN_CRITIC_MODEL", criticCfg.PrimaryModel)
-	cfg.FallbackModels = criticCfg.FallbackModels
+	cfg.Model = model
+	cfg.FallbackModels = fallbackModels(envCriticFallback)
 	cfg.PromptVersion = criticCfg.PromptVersion
 
 	return cfg, nil
@@ -216,16 +275,17 @@ func LoadCriticConfig() (Config, error) {
 const (
 	envRenderBucket        = "QGEN_RENDER_BUCKET"
 	envRendererModel       = "QGEN_RENDERER_MODEL"
+	envRendererFallback    = "QGEN_RENDERER_FALLBACK_MODELS"
 	envRenderTimeoutSecs   = "QGEN_RENDER_TIMEOUT_SECONDS"
 	envRenderRetryAttempts = "QGEN_RENDER_RETRY_ATTEMPTS"
 	envRenderRetryMaxDelay = "QGEN_RENDER_RETRY_MAX_DELAY_SECONDS"
 )
 
 // LoadRendererConfig resolves the qgen_renderer binary's boot configuration:
-// the image model from the embedded YAML (primary muse-image-1.0, the
-// Pro image model the owner chose for quality, CHO-2220), the render bucket
-// (required: without it there is nowhere to put the image and nothing to
-// return), the per-attempt timeout and the retry budget for a throttled model.
+// the image model from the REQUIRED QGEN_RENDERER_MODEL env var (with the
+// optional QGEN_RENDERER_FALLBACK_MODELS chain), the render bucket (required:
+// without it there is nowhere to put the image and nothing to return), the
+// per-attempt timeout and the retry budget for a throttled model.
 func LoadRendererConfig() (Config, error) {
 	cfg, err := loadCommon(CrewKindRenderer)
 	if err != nil {
@@ -243,10 +303,14 @@ func LoadRendererConfig() (Config, error) {
 	if bucket == "" {
 		return Config{}, fmt.Errorf("qgen_renderer: %s required (the object-store bucket scene images are written to; the kennel signs reads from it, ADR-254 D12)", envRenderBucket)
 	}
+	model, err := requiredModel(CrewKindRenderer, envRendererModel)
+	if err != nil {
+		return Config{}, err
+	}
 	cfg.ModelLabel = "renderer"
 	cfg.GatewayCrewKind = CrewSurface
-	cfg.Model = EnvOr(envRendererModel, rendererCfg.PrimaryModel)
-	cfg.FallbackModels = rendererCfg.FallbackModels
+	cfg.Model = model
+	cfg.FallbackModels = fallbackModels(envRendererFallback)
 	cfg.PromptVersion = rendererCfg.PromptVersion
 	cfg.RenderBucket = bucket
 	timeoutSecs, err := envFloat(envRenderTimeoutSecs, 120)
@@ -340,13 +404,13 @@ func (c Config) LogAttrs() []any {
 
 // GatewayConfig is the chora-model-gateway client wiring for this binary
 // (ADR-163 Phase 3.1). Every LLM call routes through the gateway at
-// GatewayEndpoint; the gateway's per-agent routing policy YAML picks the
+// GatewayEndpoint; the gateway's per-agent routing policy picks the
 // actual region, which is why the legacy per-agent *_LOCATION env vars are
 // ignored.
 //
 // The declared fallback chain travels with the request: the gateway HONOURS
 // it rather than hardcoding a per-tier ladder (AGENT-DRIVEN tiering, CR qgen
-// 2026-06-01).
+// 2026-06-01). It is empty unless *_FALLBACK_MODELS is set.
 func (c Config) GatewayConfig() modelgatewayclient.Config {
 	return modelgatewayclient.Config{
 		Endpoint:         c.GatewayEndpoint,
