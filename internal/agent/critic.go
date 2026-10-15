@@ -140,8 +140,8 @@ type CriticTaskContext struct {
 // QuestionType branching at the Step level — the composer handles that in
 // the TaskBlock + OutputBlock per QuestionType in ComposeCriticInstruction).
 //
-// Tier 1 (longcat-2.5-preview) — same tier as qgen_question's
-// internal evaluation, but with **critic** (not scoring) semantics.
+// Tier 1 — same tier as qgen_question's internal evaluation, but with
+// **critic** (not scoring) semantics.
 func CriticStep() Step {
 	return Step{
 		Name: "qgen_critic",

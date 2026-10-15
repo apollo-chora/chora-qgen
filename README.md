@@ -92,16 +92,16 @@ Common environment variables:
 | `NATS_URL` | yes | NATS JetStream connection URL. |
 | `AGENT_HEALTH_PORT` | no | `8080`. |
 
-Model configuration is embedded in `internal/agentconfig/*.yaml` and can be overridden per primary model with these variables:
+Model configuration is environment-only: no model name is embedded in the code or in `internal/agentconfig/*.yaml`, which now carries only each sub-agent's tier and prompt version. These variables are **required** — boot fails loud when one is unset:
 
-| Variable | Binary / mode |
-|---|---|
-| `QGEN_QUESTION_GENERATION_MODEL` | `qgen_question` generation |
-| `QGEN_QUESTION_COMPOSE_MODEL` | `qgen_question` `mode=compose` |
-| `QGEN_CRITIC_MODEL` | `qgen_critic` |
-| `QGEN_RENDERER_MODEL` | `qgen_renderer` |
+| Variable | Binary / mode | Required |
+|---|---|---|
+| `QGEN_QUESTION_GENERATION_MODEL` | `qgen_question` generation | yes |
+| `QGEN_QUESTION_COMPOSE_MODEL` | `qgen_question` `mode=compose` | yes |
+| `QGEN_CRITIC_MODEL` | `qgen_critic` | yes |
+| `QGEN_RENDERER_MODEL` | `qgen_renderer` | yes |
 
-The embedded fallback chains are not overridden by these environment variables.
+The declared fallback chain travels with the request (the gateway honours it). It is empty unless the matching optional comma-separated variable is set: `QGEN_QUESTION_GENERATION_FALLBACK_MODELS`, `QGEN_QUESTION_COMPOSE_FALLBACK_MODELS`, `QGEN_CRITIC_FALLBACK_MODELS`, `QGEN_RENDERER_FALLBACK_MODELS`.
 
 For `qgen_renderer`:
 
@@ -184,7 +184,7 @@ cmd/qgen_question/       qgen_question binary
 cmd/qgen_critic/         qgen_critic binary
 cmd/qgen_renderer/       qgen_renderer binary
 internal/agent/          Prompt composition and session-state handling
-internal/agentconfig/    Embedded per-agent model and prompt YAML
+internal/agentconfig/    Embedded per-agent tier and prompt YAML
 internal/boot/           Configuration, agent construction, dispatch, health, and renderer wiring
 internal/tools/          ADK tools, including the parse_document tool
 .github/workflows/ci.yml CI checks

@@ -40,7 +40,8 @@
 //
 //	CHORA_PROJECT_ID                       — required; stamped on the boot log line
 //	CHORA_AGENT_APP_NAME                   — ADK session AppName label (optional)
-//	QGEN_CRITIC_MODEL                      — primary model override (default: embedded agentconfig YAML)
+//	QGEN_CRITIC_MODEL                      — required: the gateway logical_model_id (no default)
+//	QGEN_CRITIC_FALLBACK_MODELS            — optional comma-separated fallback chain (empty = none)
 //	CHORA_GATEWAY_ENDPOINT                 — default gateway.chora.site:443
 //	CHORA_GATEWAY_TENANT_ID / _GCID        — required (ADR-163; per-request values from the dispatch win)
 //	CHORA_ENV                              — dev | staging | prod

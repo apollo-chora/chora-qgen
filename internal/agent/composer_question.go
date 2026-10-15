@@ -300,7 +300,7 @@ func AllStepsQuestion() []Step {
 }
 
 // StepAssurance3 — step 1: pre-gen safety + policy gate + multimodal-capable
-// content extraction. Tier 1 (longcat-2.5-preview — multimodal).
+// content extraction. Tier 1 (the deployment's multimodal text route).
 // Registers the parse_document ADK tool (M14.0 fail-loud stub; wired to
 // chora-doc-parser at M14.1 per ADR-153).
 func StepAssurance3() Step {
@@ -342,7 +342,7 @@ func StepAssurance3() Step {
 
 // StepGeneration3 — step 2: produces a single candidate question per the
 // 4-template runtime branching (new_mcq / new_oe / fill_mcq / fill_oe).
-// Tier 2 (longcat-2.5-preview). The per-template branching
+// Tier 2 (the env-provided generation model). The per-template branching
 // happens inside ComposeQGenQuestionInstruction (visible to tests) — this
 // constructor returns a placeholder TaskBlock that the composer replaces
 // per Intent + QuestionType.
@@ -364,7 +364,7 @@ func StepGeneration3() Step {
 }
 
 // StepEvaluation3 — step 3: LLM-as-judge scores the candidate on factuality
-// + clarity + difficulty alignment. Tier 1 (longcat-2.5-preview).
+// + clarity + difficulty alignment. Tier 1.
 // Same 3 axes as the 6-agent crew per ADR-153 — single crew-wide D6 P4
 // attribute contract.
 func StepEvaluation3() Step {
