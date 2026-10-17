@@ -6,12 +6,10 @@ cloud.google.com/go/compute/metadata v0.9.0 h1:pDUj4QMoPejqq20dK0Pg2N4yG9zIkYGdB
 cloud.google.com/go/compute/metadata v0.9.0/go.mod h1:E0bWwX5wTnLPedCKqk3pJmVgCBSM6qQI1yTBdEb3C10=
 github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op h1:1BOWQJweNyvZMlpAHXGLiZQn9S+QXGcz3xh94lC0w6E=
 github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op/go.mod h1:FQyySiasQQM8735Ddel3MRojmy4dA1IqCeyJ5jmPMbI=
-github.com/apollo-chora/chora-adk-common v0.0.0-20261006204531-c6576ba229b3 h1:cP+ATOwoTutxEhua7SBgC0bu8jT63adS6iD5tgbR54E=
-github.com/apollo-chora/chora-adk-common v0.0.0-20261006204531-c6576ba229b3/go.mod h1:lKlLN7ALCUnYSLE4kmGIqIQcwUUjxw8lCYgRNPNvhS4=
+github.com/apollo-chora/chora-adk-common v0.0.0-20261016201240-f7ad6212d8f1 h1:s9C4PJV8uh94Ez/SN1xxrGX+m08ohfdl23cZsmCxZnM=
+github.com/apollo-chora/chora-adk-common v0.0.0-20261016201240-f7ad6212d8f1/go.mod h1:lKlLN7ALCUnYSLE4kmGIqIQcwUUjxw8lCYgRNPNvhS4=
 github.com/apollo-chora/chora-common v0.0.0-20261005053858-010aed67a37b h1:lRbeA0JMWVhzN/QBvG5EbKrT8pI6kPAaOLjM9vbsWo4=
 github.com/apollo-chora/chora-common v0.0.0-20261005053858-010aed67a37b/go.mod h1:CnZuv/TABgvd6qn9jhlLNZLk9yCfMR0XcBffSsvMMiw=
-github.com/apollo-chora/chora-contracts/gen/go v0.0.0-20261005030823-832afca4af5b h1:DBeGN2Ym7gKu7aRa2PpcRbKe4s5zlBKdr+/3ryxAW2A=
-github.com/apollo-chora/chora-contracts/gen/go v0.0.0-20261005030823-832afca4af5b/go.mod h1:lP49emmpeh7Uw4NQ4sEavelSbScuJ2q49bScmnuemWY=
 github.com/aws/aws-sdk-go-v2 v1.47.1 h1:uOIZnp4PK3ZhKI0dNrJrhTEsLxbpXHTAJlwoS1pvAtw=
 github.com/aws/aws-sdk-go-v2 v1.47.1/go.mod h1:bttEH6JqnUL8LepvDVfdrds/fZ5bCIxzpe3abyUrhDU=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 h1:GPRlPwz40I2B2VrBEASOA3Bi77NyeqejNLkifosX0rs=
