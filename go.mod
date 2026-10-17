@@ -3,7 +3,7 @@ module github.com/apollo-chora/chora-qgen
 go 1.26.6
 
 require (
-	github.com/apollo-chora/chora-adk-common v0.0.0-20261006204531-c6576ba229b3
+	github.com/apollo-chora/chora-adk-common v0.0.0-20261017114751-2d7d3a6a0eb5
 	github.com/apollo-chora/chora-common v0.0.0-20261005053858-010aed67a37b
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
@@ -16,7 +16,6 @@ require (
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.18.2 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	github.com/apollo-chora/chora-contracts/gen/go v0.0.0-20261005030823-832afca4af5b // indirect
 	github.com/aws/aws-sdk-go-v2 v1.47.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.4 // indirect
