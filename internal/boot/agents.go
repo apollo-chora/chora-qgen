@@ -201,14 +201,19 @@ const (
 )
 
 // composeBeforeModel replaces the trigger user content with the composer's
-// user parts: the instruction text, the sources as object-store FileData and
-// the rubric behind its marker (the kennel's _build_contents_json by reference).
+// user parts: the instruction text, then the pre-rendered grounding text the
+// orchestrator built from chora-creation's source chunks. It replaces rather
+// than augments, which is exactly why the composer needs its own material and
+// cannot rely on groundingplugin having injected something.
 func composeBeforeModel(ctx agent.CallbackContext, req *adkmodel.LLMRequest) (*adkmodel.LLMResponse, error) {
 	creq, err := ParseComposeRequest(ctx.State())
 	if err != nil {
 		return nil, err
 	}
-	parts := ComposeUserParts(creq)
+	parts, err := ComposeUserParts(creq, StateString(ctx.State(), stateKeySourceMaterialText))
+	if err != nil {
+		return nil, err
+	}
 	if req == nil {
 		return nil, nil
 	}

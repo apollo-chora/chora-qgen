@@ -38,6 +38,10 @@ func composeState() map[string]any {
 			map[string]any{"gs_uri": "gs://chora-creation-uploads/t/second-rubric.pdf", "mime_type": "application/pdf", "role": "rubric"},
 		},
 		"grounding_mode": "strict",
+		// The orchestrator renders the grounding text from chora-creation's
+		// source chunks and stamps it here; the composer never sees a blob.
+		"source_material_text": `<SOURCE file="paper-2024.pdf" page="1">Fractions of a whole.</SOURCE>` +
+			"\n" + `<RUBRIC file="mark-scheme.pdf" page="1">1 mark per correct answer.</RUBRIC>`,
 	}
 }
 
@@ -95,12 +99,50 @@ func TestComposeInstructionAndParts(t *testing.T) {
 	if strings.Contains(text, strings.Repeat("long ", 120)) {
 		t.Fatal("stems must be truncated to 512 chars")
 	}
-	parts := ComposeUserParts(req)
-	if len(parts) != 4 || parts[0].Text == "" || parts[1].FileData == nil || parts[1].FileData.FileURI != "gs://chora-creation-uploads/t/paper-2024.pdf" || parts[1].FileData.MIMEType != "application/pdf" {
-		t.Fatalf("parts = %+v", parts)
+	// Grounding is TEXT now. A FileData part has nowhere to land in the model
+	// gateway's canonical contract, so the composer must never build one.
+	parts, err := ComposeUserParts(req, `<SOURCE file="paper-2024.pdf" page="1">Fractions.</SOURCE>`)
+	if err != nil {
+		t.Fatalf("ComposeUserParts: %v", err)
 	}
-	if parts[2].Text != ComposeRubricMarker || parts[3].FileData == nil || parts[3].FileData.FileURI != "gs://chora-creation-uploads/t/mark-scheme.pdf" || parts[3].FileData.MIMEType != "application/pdf" {
-		t.Fatalf("rubric must follow its marker with a clean mime: %+v %+v", parts[2], parts[3])
+	if len(parts) != 2 {
+		t.Fatalf("parts = %+v; want instruction + grounding text", parts)
+	}
+	if parts[0].Text == "" {
+		t.Fatal("instruction text missing")
+	}
+	if parts[1].FileData != nil || parts[1].InlineData != nil {
+		t.Fatalf("grounding must be text, not a blob: %+v", parts[1])
+	}
+	if !strings.HasPrefix(parts[1].Text, "\n\n") || !strings.Contains(parts[1].Text, "Fractions.") {
+		t.Fatalf("grounding text = %q; want the material, separated from the instruction", parts[1].Text)
+	}
+}
+
+// Declaring sources but supplying no text must REFUSE: composing from question
+// stems alone while the author believes it mirrors their paper silently drops
+// the grounding.
+func TestComposeUserParts_RefusesDeclaredFilesWithoutText(t *testing.T) {
+	req, _ := ParseComposeRequest(mapState(composeState()))
+	var perm *agentdispatch.PermanentError
+	parts, err := ComposeUserParts(req, "   ")
+	if !errors.As(err, &perm) || !strings.Contains(err.Error(), "compose_material_missing") {
+		t.Fatalf("err = %v; want a permanent compose_material_missing refusal", err)
+	}
+	if parts != nil {
+		t.Fatalf("parts = %+v; want nil on refusal", parts)
+	}
+}
+
+func TestComposeUserParts_UngroundedIsInstructionOnly(t *testing.T) {
+	req, _ := ParseComposeRequest(mapState(composeState()))
+	req.SourceFiles = nil
+	parts, err := ComposeUserParts(req, "")
+	if err != nil {
+		t.Fatalf("ungrounded compose must still work: %v", err)
+	}
+	if len(parts) != 1 || parts[0].Text == "" {
+		t.Fatalf("parts = %+v; want the instruction only", parts)
 	}
 }
 
@@ -234,8 +276,8 @@ func TestQuestionRoot_composeRunsTheComposerAndNormalises(t *testing.T) {
 			break
 		}
 	}
-	if user == nil || len(user.Parts) != 4 || !strings.Contains(user.Parts[0].Text, "Compose ONE test set") || user.Parts[1].FileData == nil || user.Parts[2].Text != ComposeRubricMarker || user.Parts[3].FileData == nil {
-		t.Fatalf("user parts = %+v", user)
+	if user == nil || len(user.Parts) != 2 || !strings.Contains(user.Parts[0].Text, "Compose ONE test set") || user.Parts[1].FileData != nil || !strings.Contains(user.Parts[1].Text, "Fractions of a whole.") {
+		t.Fatalf("user parts = %+v; want instruction + grounding TEXT", user)
 	}
 }
 
@@ -289,5 +331,33 @@ func TestComposeConfigAndGateway(t *testing.T) {
 	cfg, _ = LoadQuestionConfig()
 	if cfg.ComposeModel != "gemini-3.1-pro-preview" || cfg.ComposeFallbackModels[0] != "gemini-2.5-flash" {
 		t.Fatalf("override replaces the primary only: %+v", cfg)
+	}
+}
+
+// Production stores Garage s3:// URIs. The old gs://-only check rejected every
+// real job before any part was built, so this is a regression test for a bug
+// that made the whole compose step unreachable, not a nicety.
+func TestParseComposeRequest_AcceptsProductionS3References(t *testing.T) {
+	st := composeState()
+	st["source_files"] = []any{
+		map[string]any{"gs_uri": "s3://chora-batch-uploads/t/jobs/j1/source", "mime_type": "application/pdf", "role": "source"},
+		map[string]any{"gs_uri": "s3://chora-batch-uploads/t/jobs/j1/rubric", "mime_type": "text/markdown", "role": "rubric"},
+	}
+	req, err := ParseComposeRequest(mapState(st))
+	if err != nil {
+		t.Fatalf("s3 references must parse: %v", err)
+	}
+	if len(req.SourceFiles) != 2 {
+		t.Fatalf("source files = %d; want 2", len(req.SourceFiles))
+	}
+	sources, rubric := SplitSourceFiles(req.SourceFiles)
+	if len(sources) != 1 || rubric == nil || rubric.GSURI != "s3://chora-batch-uploads/t/jobs/j1/rubric" {
+		t.Fatalf("split over s3 refs: sources=%v rubric=%v", sources, rubric)
+	}
+	// And a non-object scheme is still refused, so a bare path cannot pose as a source.
+	st["source_files"] = []any{map[string]any{"gs_uri": "/etc/passwd"}}
+	var perm *agentdispatch.PermanentError
+	if _, err := ParseComposeRequest(mapState(st)); !errors.As(err, &perm) || !strings.Contains(err.Error(), "invalid_source_files") {
+		t.Fatalf("relative path must be refused: %v", err)
 	}
 }
