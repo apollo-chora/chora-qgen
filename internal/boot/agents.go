@@ -208,7 +208,10 @@ func composeBeforeModel(ctx agent.CallbackContext, req *adkmodel.LLMRequest) (*a
 	if err != nil {
 		return nil, err
 	}
-	parts := ComposeUserParts(creq)
+	parts, err := ComposeUserParts(creq, StateString(ctx.State(), stateKeyMaterialText))
+	if err != nil {
+		return nil, err
+	}
 	if req == nil {
 		return nil, nil
 	}

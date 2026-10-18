@@ -51,6 +51,12 @@ const (
 	stateKeySourceFiles   = "source_files"
 	stateKeyGroundingMode = "grounding_mode"
 	stateKeyComposeRaw    = "qgen_question_compose_raw"
+
+	// stateKeyMaterialText carries the pre-rendered, delimited grounding text
+	// the orchestrator builds from chora-creation's source chunks. The composer
+	// grounds on THAT, never on a blob reference: the model gateway's canonical
+	// contract has no part that can carry one.
+	stateKeyMaterialText = "material_text"
 )
 
 // ComposeSystemPrompt is the composer's system prompt (verbatim from the
@@ -132,8 +138,13 @@ func ParseComposeRequest(st stateReader) (ComposeRequest, error) {
 		if sf.GSURI == "" {
 			continue
 		}
-		if !strings.HasPrefix(sf.GSURI, "gs://") {
-			return req, agentdispatch.Permanent("invalid_source_files: gs_uri must be a gs:// reference", fmt.Errorf("gs_uri=%q", sf.GSURI))
+		// The reference is an ATTRIBUTION label now, not something anyone
+		// dereferences: the composer grounds on material_text. Accept either
+		// object-store scheme — production stores s3:// (Garage) while the
+		// historical gs:// shape remains valid — and reject anything else so a
+		// relative path or a bare filename cannot masquerade as a source.
+		if !strings.HasPrefix(sf.GSURI, "gs://") && !strings.HasPrefix(sf.GSURI, "s3://") {
+			return req, agentdispatch.Permanent("invalid_source_files: gs_uri must be a gs:// or s3:// object reference", fmt.Errorf("gs_uri=%q", sf.GSURI))
 		}
 		req.SourceFiles = append(req.SourceFiles, sf)
 	}
@@ -225,19 +236,34 @@ func ComposeInstructionText(req ComposeRequest) string {
 const ComposeRubricMarker = "The following file is the MARK SCHEME / grading rubric for this paper. " +
 	"Use it to extract the per-question marks and align the points distribution to it."
 
-// ComposeUserParts renders the user content: the instruction text, then every
-// source as an object-store FileData part, then the rubric marker + rubric (by
-// reference, the way companion_extract grounds; the bytes never ride the bus).
-func ComposeUserParts(req ComposeRequest) []*genai.Part {
-	parts := []*genai.Part{{Text: ComposeInstructionText(req)}}
-	sources, rubric := SplitSourceFiles(req.SourceFiles)
-	for _, f := range sources {
-		parts = append(parts, &genai.Part{FileData: &genai.FileData{FileURI: f.GSURI, MIMEType: mimeOr(f.MimeType)}})
+// ComposeUserParts renders the user content: the instruction text, then the
+// pre-rendered grounding TEXT the orchestrator built from chora-creation's
+// source chunks.
+//
+// It used to append one object-store FileData part per source plus the rubric
+// behind its marker. That shape assumed the gateway would dereference the URI;
+// the Python model gateway's canonical contract admits only text | image |
+// refusal, so modelgatewayclient refuses such a part and the whole compose step
+// died before a model call.
+//
+// Declaring source files but supplying no text is a REFUSAL, not an empty
+// prompt: composing a test set from question stems alone while the author
+// believes it mirrors their paper would silently drop the grounding.
+func ComposeUserParts(req ComposeRequest, materialText string) ([]*genai.Part, error) {
+	text := strings.TrimSpace(materialText)
+	if text == "" {
+		if len(req.SourceFiles) > 0 {
+			return nil, agentdispatch.Permanent(
+				"compose_material_missing: source files declared but no material_text was provided",
+				fmt.Errorf("compose: %d source file(s) declared, material_text empty", len(req.SourceFiles)),
+			)
+		}
+		return []*genai.Part{{Text: ComposeInstructionText(req)}}, nil
 	}
-	if rubric != nil {
-		parts = append(parts, &genai.Part{Text: ComposeRubricMarker}, &genai.Part{FileData: &genai.FileData{FileURI: rubric.GSURI, MIMEType: mimeOr(rubric.MimeType)}})
-	}
-	return parts
+	return []*genai.Part{
+		{Text: ComposeInstructionText(req)},
+		{Text: "\n\n" + text},
+	}, nil
 }
 
 func mimeOr(m string) string {
