@@ -52,11 +52,14 @@ const (
 	stateKeyGroundingMode = "grounding_mode"
 	stateKeyComposeRaw    = "qgen_question_compose_raw"
 
-	// stateKeyMaterialText carries the pre-rendered, delimited grounding text
-	// the orchestrator builds from chora-creation's source chunks. The composer
-	// grounds on THAT, never on a blob reference: the model gateway's canonical
-	// contract has no part that can carry one.
-	stateKeyMaterialText = "material_text"
+	// stateKeySourceMaterialText carries the pre-rendered, delimited grounding
+	// text the orchestrator builds from chora-creation's source chunks. The
+	// composer grounds on THAT, never on a blob reference: the model gateway's
+	// canonical contract has no part that can carry one.
+	//
+	// The literal deliberately matches Phase 1c's groundingplugin key — one
+	// name for one piece of material, so a reader cannot mistake them for two.
+	stateKeySourceMaterialText = "source_material_text"
 )
 
 // ComposeSystemPrompt is the composer's system prompt (verbatim from the
@@ -231,24 +234,25 @@ func ComposeInstructionText(req ComposeRequest) string {
 		ComposeTitleMaxChars, ComposeDescriptionMaxChars, ComposePointsMin, ComposePointsMax, ComposeDefaultPoints)
 }
 
-// ComposeRubricMarker precedes the rubric part: the mark scheme is a DISTINCT
-// part behind an explicit marker, never presented as question material.
-const ComposeRubricMarker = "The following file is the MARK SCHEME / grading rubric for this paper. " +
-	"Use it to extract the per-question marks and align the points distribution to it."
-
 // ComposeUserParts renders the user content: the instruction text, then the
 // pre-rendered grounding TEXT the orchestrator built from chora-creation's
 // source chunks.
 //
 // It used to append one object-store FileData part per source plus the rubric
-// behind its marker. That shape assumed the gateway would dereference the URI;
-// the Python model gateway's canonical contract admits only text | image |
-// refusal, so modelgatewayclient refuses such a part and the whole compose step
-// died before a model call.
+// behind ComposeRubricMarker. That shape assumed the gateway would dereference
+// the URI; the Python model gateway's canonical contract admits only text |
+// image | refusal, so modelgatewayclient refuses such a part and the whole
+// compose step died before a model call. The marker went with it — the
+// orchestrator now delimits the rubric inside source_material_text.
 //
-// Declaring source files but supplying no text is a REFUSAL, not an empty
-// prompt: composing a test set from question stems alone while the author
-// believes it mirrors their paper would silently drop the grounding.
+// Declaring source files but supplying no text is a PERMANENT dispatch failure
+// with a deterministic reason (compose_material_missing).
+//
+// CAVEAT worth knowing before relying on it: that reason makes the condition
+// machine-distinguishable, it does NOT by itself stop an under-grounded test
+// set. The orchestrator currently degrades a failed compose dispatch to a
+// deterministic fallback, so suppressing the dispatch when grounding is
+// unavailable is the CALLER's policy, not something this function can enforce.
 func ComposeUserParts(req ComposeRequest, materialText string) ([]*genai.Part, error) {
 	text := strings.TrimSpace(materialText)
 	if text == "" {
@@ -264,14 +268,6 @@ func ComposeUserParts(req ComposeRequest, materialText string) ([]*genai.Part, e
 		{Text: ComposeInstructionText(req)},
 		{Text: "\n\n" + text},
 	}, nil
-}
-
-func mimeOr(m string) string {
-	m = strings.ToLower(strings.TrimSpace(strings.Split(m, ";")[0]))
-	if m == "" {
-		return "application/octet-stream"
-	}
-	return m
 }
 
 var composeFenceRE = regexp.MustCompile("(?s)```(?:json)?\\s*(.+?)\\s*```")

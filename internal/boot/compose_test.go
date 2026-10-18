@@ -40,7 +40,7 @@ func composeState() map[string]any {
 		"grounding_mode": "strict",
 		// The orchestrator renders the grounding text from chora-creation's
 		// source chunks and stamps it here; the composer never sees a blob.
-		"material_text": `<SOURCE file="paper-2024.pdf" page="1">Fractions of a whole.</SOURCE>` +
+		"source_material_text": `<SOURCE file="paper-2024.pdf" page="1">Fractions of a whole.</SOURCE>` +
 			"\n" + `<RUBRIC file="mark-scheme.pdf" page="1">1 mark per correct answer.</RUBRIC>`,
 	}
 }
