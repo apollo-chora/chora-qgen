@@ -333,3 +333,31 @@ func TestComposeConfigAndGateway(t *testing.T) {
 		t.Fatalf("override replaces the primary only: %+v", cfg)
 	}
 }
+
+// Production stores Garage s3:// URIs. The old gs://-only check rejected every
+// real job before any part was built, so this is a regression test for a bug
+// that made the whole compose step unreachable, not a nicety.
+func TestParseComposeRequest_AcceptsProductionS3References(t *testing.T) {
+	st := composeState()
+	st["source_files"] = []any{
+		map[string]any{"gs_uri": "s3://chora-batch-uploads/t/jobs/j1/source", "mime_type": "application/pdf", "role": "source"},
+		map[string]any{"gs_uri": "s3://chora-batch-uploads/t/jobs/j1/rubric", "mime_type": "text/markdown", "role": "rubric"},
+	}
+	req, err := ParseComposeRequest(mapState(st))
+	if err != nil {
+		t.Fatalf("s3 references must parse: %v", err)
+	}
+	if len(req.SourceFiles) != 2 {
+		t.Fatalf("source files = %d; want 2", len(req.SourceFiles))
+	}
+	sources, rubric := SplitSourceFiles(req.SourceFiles)
+	if len(sources) != 1 || rubric == nil || rubric.GSURI != "s3://chora-batch-uploads/t/jobs/j1/rubric" {
+		t.Fatalf("split over s3 refs: sources=%v rubric=%v", sources, rubric)
+	}
+	// And a non-object scheme is still refused, so a bare path cannot pose as a source.
+	st["source_files"] = []any{map[string]any{"gs_uri": "/etc/passwd"}}
+	var perm *agentdispatch.PermanentError
+	if _, err := ParseComposeRequest(mapState(st)); !errors.As(err, &perm) || !strings.Contains(err.Error(), "invalid_source_files") {
+		t.Fatalf("relative path must be refused: %v", err)
+	}
+}
