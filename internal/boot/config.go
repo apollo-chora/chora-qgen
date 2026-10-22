@@ -118,6 +118,10 @@ type Config struct {
 	// ImageRetry its bounded retry on a throttled image model.
 	ImageTimeout time.Duration
 	ImageRetry   modelgatewayclient.ImageRetryPolicy
+	// CallTimeout is the per-Invoke ceiling for text model calls
+	// (QGEN_MODEL_CALL_TIMEOUT_SECONDS). Unset falls back to the gateway
+	// client's 90s default.
+	CallTimeout time.Duration
 
 	ChoraEnv string
 }
@@ -281,6 +285,11 @@ func envFloat(name string, fallback float64) (float64, error) {
 // loadCommon resolves everything the three binaries share: project, the ADK
 // session app name and the ADR-163 gateway identity. The fail-loud guards
 // live here because every binary carries them verbatim.
+// envModelCallTimeoutSecs is the per-Invoke ceiling for text model calls,
+// separate from the renderer's QGEN_RENDER_TIMEOUT_SECONDS. Unset keeps the
+// gateway client's 90s default.
+const envModelCallTimeoutSecs = "QGEN_MODEL_CALL_TIMEOUT_SECONDS"
+
 func loadCommon(binary string) (Config, error) {
 	projectID := os.Getenv("CHORA_PROJECT_ID")
 	if projectID == "" {
@@ -298,6 +307,11 @@ func loadCommon(binary string) (Config, error) {
 			"(Phase 3.1 cutover per ADR-163; no in-memory fallback per feedback_no_stubs_real_wiring)", binary)
 	}
 
+	callTimeoutSecs, err := envFloat(envModelCallTimeoutSecs, 90)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		Binary:    binary,
 		ProjectID: projectID,
@@ -309,6 +323,7 @@ func loadCommon(binary string) (Config, error) {
 		GatewayTenantID: gatewayTenantID,
 		GatewayGCID:     gatewayGCID,
 		ChoraEnv:        EnvOr("CHORA_ENV", "dev"),
+		CallTimeout:     time.Duration(callTimeoutSecs * float64(time.Second)),
 	}, nil
 }
 
@@ -358,6 +373,7 @@ func (c Config) GatewayConfig() modelgatewayclient.Config {
 		TenantID:         c.GatewayTenantID,
 		GCID:             c.GatewayGCID,
 		Audience:         c.GatewayAudience,
+		CallTimeout:      c.CallTimeout,
 	}
 }
 
